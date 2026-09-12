@@ -4,7 +4,7 @@ import { Game } from './game.js';
 import { P } from './player.js';
 import { VIEW_W, VIEW_H } from './render.js';
 import { buildArt } from './art.js';
-import { Input } from './input.js';
+import { Input, keyName } from './input.js';
 import { sfx } from './audio.js';
 
 const STEP = 1 / 120;          // physics step; rendering is per animation frame
@@ -32,11 +32,25 @@ document.addEventListener('fullscreenchange', resize);
 resize();
 
 const input = new Input(window);
-const game = new Game(ctx);
+const game = new Game(ctx, input);
+
+// The controls line reads back whatever is actually bound, so it stays honest
+// after a trip through the binding screen.
+function writeHint() {
+  const keys = (action, n = 2) =>
+    input.keysFor(action).slice(0, n).map(keyName).join('/').toLowerCase() || 'unbound';
+  const hint = document.getElementById('hint');
+  if (hint) {
+    hint.textContent = `jump ${keys('jump', 3)} \u00b7 dash ${keys('dash')} \u00b7 ` +
+      `ledges ${keys('vault')} (hold) \u00b7 burst ${keys('burst', 1)} \u00b7 ` +
+      `o controls \u00b7 f fullscreen`;
+  }
+}
+writeHint();
 
 // F toggles fullscreen — the game is meant to be played big.
 window.addEventListener('keydown', (e) => {
-  if (e.code !== 'KeyF') return;
+  if (e.code !== 'KeyF' || game.menu?.open) return;
   e.preventDefault();
   if (document.fullscreenElement) document.exitFullscreen?.();
   else document.documentElement.requestFullscreen?.().catch(() => {});

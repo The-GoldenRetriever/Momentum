@@ -2,6 +2,7 @@
 
 import { drawText, textWidth } from './font.js';
 import { VIEW_W, VIEW_H } from './render.js';
+import { P } from './player.js';
 
 const barW = 74;
 
@@ -30,11 +31,17 @@ export function drawHud(ctx, game) {
   drawText(ctx, 'flow', x, y - 8, '#6f649c', 1);
   ctx.fillStyle = '#221c3a';
   ctx.fillRect(x, y, barW, 5);
-  const f = Math.round(p.flow * (barW - 2));
-  const grad = p.flow > 0.85 ? '#9cf6ff' : p.flow > 0.5 ? '#63e0b0' : '#5b9adf';
-  ctx.fillStyle = grad;
+  // The bar runs the whole capacity, with a notch where the burst opens: what
+  // sits past the notch is fuel you are carrying, not speed you are running.
+  const span = barW - 2;
+  const f = Math.round((p.flow / P.FLOW_MAX) * span);
+  const gate = Math.round((P.BURST_FLOW_MIN / P.FLOW_MAX) * span);
+  ctx.fillStyle = p.flow >= P.BURST_FLOW_MIN ? '#9cf6ff' : p.flow > 0.5 ? '#63e0b0' : '#5b9adf';
   ctx.fillRect(x + 1, y + 1, f, 3);
-  if (p.flow > 0.98) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x + barW - 2, y, 2, 5); }
+  if (f > gate) { ctx.fillStyle = '#dff3ff'; ctx.fillRect(x + 1 + gate, y + 1, f - gate, 3); }
+  ctx.fillStyle = p.flow >= P.BURST_FLOW_MIN ? '#0b0a14' : '#443a6e';
+  ctx.fillRect(x + 1 + gate, y + 1, 1, 3);
+  if (p.flow > P.FLOW_MAX - 0.02) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x + barW - 2, y, 2, 5); }
 
   const spd = Math.round(Math.abs(p.vx));
   drawText(ctx, `${spd}`.padStart(3, ' '), x + barW + 6, y - 1, spd > 300 ? '#9cf6ff' : '#b9b2d6', 1);

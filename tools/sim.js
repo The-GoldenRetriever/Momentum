@@ -3,7 +3,7 @@
 // (or `node tools/sim.js` where node is available)
 
 import { buildTestArea } from '../src/levels/test-area.js';
-import { TILE } from '../src/level.js';
+import { Level, TILE } from '../src/level.js';
 import { Player, P } from '../src/player.js';
 import { Fx } from '../src/particles.js';
 
@@ -25,8 +25,8 @@ class Keys {
   get moveY() { return (this.held('down') ? 1 : 0) - (this.held('up') ? 1 : 0); }
 }
 
-export function makeSim(at = { x: 6, y: 26 }) {
-  const level = buildTestArea();
+export function makeSim(at = { x: 6, y: 26 }, custom = null) {
+  const level = custom ?? buildTestArea();
   const fx = new Fx();
   const p = new Player(level, fx);
   p.reset(at.x * TILE, at.y * TILE);
@@ -563,6 +563,97 @@ function feetFirst(mode) {
   check('and letting go of down stands you up without dropping it',
     out.p.bursting && !out.p.sliding && out.p.h === P.H,
     `bursting=${out.p.bursting} h=${out.p.h}`);
+}
+
+// 24. a wall never ends a burst. It is bought and paid for with a full bar, so
+//     it costs you the ground and nothing else: pinned against rock it keeps
+//     burning, and only the bar running dry puts it out.
+{
+  const ground = () => new Level(80, 30).rect(0, 20, 80, 10);
+  // a one-tile ledge with a wall standing right behind it
+  const pocket = (wallH) => ground().rect(40, 19, 3, 1).rect(43, 20 - wallH, 2, wallH);
+
+  const burstAt = (level) => {
+    const sim = makeSim({ x: 6, y: 19 }, level);
+    sim.p.flow = 1;
+    sim.run(80, ['right']);
+    sim.run(1, ['right', 'burst']);
+    sim.run(WIND, ['right']);
+    return sim;
+  };
+
+  // head-on, no vault in it at all
+  const head = burstAt(ground().rect(40, 12, 2, 8));
+  let hitAt = 0;
+  head.run(120, ['right'], (i, pl) => { if (!hitAt && pl.t.bump > 0) hitAt = i; });
+  check('a burst run straight into a wall survives it', hitAt > 0 && head.p.bursting,
+    `hit at step ${hitAt}, flow ${head.p.flow.toFixed(2)}`);
+  check('and the wall does not take the fuel either', head.p.flow > 0.6,
+    `flow ${head.p.flow.toFixed(2)}`);
+
+  // the same wall met halfway up a vault, which is a climb you cannot steer
+  const dead = burstAt(pocket(8));              // too tall to jump: a real dead end
+  let pinned = 0, flowIn = 0;
+  dead.run(200, () => (dead.p.cue ? ['right', 'vault'] : ['right']), (i, pl) => {
+    if (!pinned && pl.vaults > 0 && pl.t.bump > 0) { pinned = i; flowIn = pl.flow; }
+  });
+  check('a vault into a wall keeps the burst, fuel and all',
+    pinned > 0 && dead.p.bursting && flowIn > 0.6, `flow ${flowIn.toFixed(2)} on contact`);
+  dead.run(400, ['right']);
+  check('it is the bar, not the wall, that finally ends it',
+    !dead.p.bursting && dead.p.flow < 0.02, `flow ${dead.p.flow.toFixed(2)}`);
+
+  // ... and a wall you can get over hands the whole burst back
+  const out = burstAt(pocket(2));
+  let jumpAt = 0, cleared = null;
+  out.run(300, (i) => {
+    const k = ['right'];
+    if (out.p.cue) k.push('vault');
+    if (!jumpAt && out.p.vaults > 0 && out.p.t.bump > 0) jumpAt = i;
+    if (jumpAt && i >= jumpAt + 2 && i <= jumpAt + 4) k.push('jump');
+    return k;
+  }, (i, pl) => {
+    if (!cleared && jumpAt && pl.cx / TILE > 46) cleared = { on: pl.bursting, vx: Math.abs(pl.vx) };
+  });
+  check('jumping out of the pocket picks the speed straight back up',
+    jumpAt > 0 && cleared && cleared.on && cleared.vx > 900,
+    cleared ? `bursting=${cleared.on} at ${cleared.vx.toFixed(0)} px/s past the wall`
+            : `never cleared the wall (pinned at step ${jumpAt})`);
+}
+
+// 25. the bar holds more than running spends: the overfill is burst fuel, and a
+//     burst cashed off a topped-up bar runs proportionally longer. (On a flat
+//     plain of its own — no stretch of the test area is long enough to run a
+//     full tank out without meeting something.)
+{
+  const plain = () => new Level(400, 30).rect(0, 20, 400, 10);
+
+  const sim = makeSim({ x: 6, y: 19 }, plain());
+  sim.run(600, ['right']);
+  check('flow fills past a bar on running alone', sim.p.flow > 1,
+    `flow ${sim.p.flow.toFixed(2)} of ${P.FLOW_MAX}`);
+  check('and stops at the cap', sim.p.flow <= P.FLOW_MAX + 1e-6, `flow ${sim.p.flow.toFixed(2)}`);
+  check('but the run itself still tops out at one bar',
+    Math.abs(sim.p.topSpeed - (P.RUN_BASE + P.RUN_FLOW)) < 0.001 &&
+    Math.abs(sim.p.vx) < P.RUN_BASE + P.RUN_FLOW + 10,
+    `top ${Math.round(sim.p.topSpeed)} px/s at ${Math.abs(sim.p.vx).toFixed(0)}`);
+
+  // a full tank is FLOW_MAX / BURST_DRAIN of burst
+  const burn = (flow) => {
+    const t = makeSim({ x: 6, y: 19 }, plain());
+    t.p.flow = flow;
+    t.run(200, ['right'], () => { t.p.flow = flow; });   // held there while it winds up
+    t.run(1, ['right', 'burst']);
+    t.run(WIND, ['right']);
+    let steps = 0;
+    t.run(1200, ['right'], (i, pl) => { if (pl.bursting) steps++; });
+    return steps / 120;
+  };
+  const full = burn(P.FLOW_MAX);
+  const bar = burn(1);
+  check('a topped-up bar is a longer burst',
+    Math.abs(full - P.FLOW_MAX / P.BURST_DRAIN) < 0.2 && full > bar + 1.5,
+    `${full.toFixed(2)}s on a full tank vs ${bar.toFixed(2)}s on one bar`);
 }
 
 print(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURE(S)`);

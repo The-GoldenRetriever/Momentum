@@ -7,14 +7,18 @@ import { Fx } from './particles.js';
 import { Camera } from './camera.js';
 import { Renderer, VIEW_W, VIEW_H } from './render.js';
 import { drawHud } from './hud.js';
+import { BindMenu } from './binds.js';
 import { sfx } from './audio.js';
 
 const CRYSTAL_RESPAWN = 2.2;
 const BEST_KEY = 'momentum.best.testarea';
 
 export class Game {
-  constructor(ctx) {
+  // `input` is optional: the headless frame grabber drives the game with its
+  // own key stub and has no binding screen.
+  constructor(ctx, input = null) {
     this.ctx = ctx;
+    this.menu = input ? new BindMenu(input) : null;
     this.level = buildTestArea();
     this.fx = new Fx();
     this.player = new Player(this.level, this.fx);
@@ -48,6 +52,10 @@ export class Game {
   update(dt, input, realDt = dt) {
     const p = this.player;
 
+    // The binding screen freezes the run outright — the clock included.
+    if (this.menu?.open) { this.menu.update(realDt); return; }
+    if (this.menu && input.hit('keys')) { this.menu.show(); return; }
+
     if (input.hit('debug')) this.debug = !this.debug;
     if (input.hit('mute')) this.muted = sfx.toggleMute();
     if (input.hit('restart')) this.restart();
@@ -78,6 +86,7 @@ export class Game {
   draw(dt, realDt = dt) {
     this.renderer.draw(this, dt, realDt);
     drawHud(this.ctx, this);
+    this.menu?.draw(this.ctx);
   }
 
   // -------------------------------------------------------------- entities

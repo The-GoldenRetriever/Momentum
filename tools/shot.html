@@ -6,11 +6,12 @@
 import { Game } from '../src/game.js';
 import { P } from '../src/player.js';
 import { buildArt } from '../src/art.js';
+import { Input } from '../src/input.js';
 buildArt();
 const q = new URLSearchParams(location.search);
 const ctx = document.getElementById('game').getContext('2d', { alpha: false });
 ctx.imageSmoothingEnabled = false;
-const game = new Game(ctx);
+const game = new Game(ctx, new Input(window));
 
 class Keys {
   constructor() { this.down = new Set(); this.pressed = new Set(); this.released = new Set(); }
@@ -50,6 +51,14 @@ for (let i = 0; i < steps; i++) {
 game.timeScale = game.player.timeWarped ? P.BURST_SCALE : 1;
 if (game.player.timeWarped) for (let i = 0; i < 30; i++) game.renderer.zoom += (1.25 - game.renderer.zoom) * 0.4;
 game.cam.follow(game.player, 0.5);
+// &menu=open|capture[&sel=<row>] grabs the binding screen over the frame
+const menuArg = q.get('menu');
+if (menuArg) {
+  game.menu.show();
+  game.menu.sel = Number(q.get('sel') || 0);
+  game.menu.capturing = menuArg === 'capture';
+  if (q.has('note')) { game.menu.note = q.get('note'); game.menu.noteT = 1; }
+}
 game.draw(1 / 150, 1 / 60);
 document.title = 'ready';
 </script>

@@ -796,7 +796,7 @@ export class Renderer {
 
   #speedOverlay(p) {
     const { ctx } = this;
-    const f = p.flow;
+    const f = Math.min(1, p.flow);      // the overfill is fuel; the edges max out at a bar
     if (f > 0.45) {
       const a = (f - 0.45) / 0.55;
       ctx.globalAlpha = a * 0.22;

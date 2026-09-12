@@ -18,7 +18,9 @@ export const P = {
   FAST_FALL: 900,
 
   RUN_BASE: 190,             // top speed with no flow built up
-  RUN_FLOW: 140,             // extra top speed at full flow
+  RUN_FLOW: 140,             // extra top speed at one full bar of flow
+  FLOW_MAX: 1.6,             // the bar holds more than it spends on running:
+                             // the first bar buys speed, the rest is burst fuel
   ACCEL: 1500,
   ACCEL_AIR: 1150,
   TURN_BOOST: 2.1,           // how much faster you accelerate when reversing
@@ -191,7 +193,9 @@ export class Player {
   get dashing() { return this.t.dash > 0; }
   get vaulting() { return this.vault !== null; }
   get skidding() { return this.t.skid > 0; }
-  get topSpeed() { return P.RUN_BASE + P.RUN_FLOW * this.flow; }
+  // Running tops out at one bar. Flow past that is headroom for the burst, not
+  // more sprint — the overfill is fuel you are carrying, not speed you have.
+  get topSpeed() { return P.RUN_BASE + P.RUN_FLOW * Math.min(1, this.flow); }
   get speed() { return Math.abs(this.vx); }
   get sprinting() { return this.speed > P.RUN_BASE * 0.92; }
 
@@ -390,7 +394,7 @@ export class Player {
     if (t.super > 0) {
       if (this.dashDir.y > 0) { this.vx = this.facing * P.HYPER_X; this.vy = -P.JUMP_V * 0.82; }
       else this.vx = this.facing * Math.max(Math.abs(this.vx), P.SUPER_X);
-      this.flow = Math.min(1, this.flow + 0.2);
+      this.flow = Math.min(P.FLOW_MAX, this.flow + 0.2);
       this.fx.burst(this.cx, this.footY, 12, '#9cf6ff');
       this.fx.shake(3);
       t.super = 0;
@@ -416,7 +420,7 @@ export class Player {
     this.t.buffer = 0; this.t.wallCoyote = 0; this.t.wallLock = P.WALL_LOCK; this.t.noSnap = 0.1;
     this.grounded = false;
     this.fallFrom = null;
-    this.flow = Math.min(1, this.flow + 0.08);
+    this.flow = Math.min(P.FLOW_MAX, this.flow + 0.08);
     this.fx.burst(this.x + (dir > 0 ? this.w : 0), this.cy, 8, '#cbb9ff');
     sfx.wallJump();
   }
@@ -437,7 +441,7 @@ export class Player {
     // profile rather than shoving the hitbox up into the rock.
     if (this.#tryStand()) this.sliding = false;
     this.fallFrom = null;
-    this.flow = Math.min(1, this.flow + 0.15);
+    this.flow = Math.min(P.FLOW_MAX, this.flow + 0.15);
     this.fx.burst(this.cx, this.cy, 14, '#9cf6ff');
     this.fx.shake(3.5);
     sfx.dash();
@@ -546,12 +550,18 @@ export class Player {
       : (Math.floor(nx / TILE) + 1) * TILE + 0.001;
     if (this.#tryStep(flush, nx)) return;
 
-    // Hard wall: stop flush against it and shed some flow.
+    // Hard wall: stop flush against it and shed some flow. A burst is the one
+    // thing a wall cannot take from you — it is bought and paid for with a full
+    // bar, so it costs you the ground and nothing else, and it is still burning
+    // the moment you get a way past.
+    const first = this.t.bump <= 0;          // repeat contact is the same bump
     this.bumpDir = dir;
     this.t.bump = 0.12;
     this.x = flush;
-    this.#endBurst();
-    if (Math.abs(this.vx) > 240) { this.fx.dust(this.x + (dir > 0 ? this.w : 0), this.cy, -dir * 40, 4); this.flow *= 0.55; }
+    if (first && Math.abs(this.vx) > 240) {
+      this.fx.dust(this.x + (dir > 0 ? this.w : 0), this.cy, -dir * 40, 4);
+      if (!this.bursting) this.flow *= 0.55;
+    }
     this.vx = 0;
   }
 
@@ -633,7 +643,7 @@ export class Player {
       this.vx = Math.sign(this.dashDir.x) * P.WAVEDASH_X;
       this.vy = 0;
       this.t.super = P.SUPER_WINDOW;
-      this.flow = Math.min(1, this.flow + 0.25);
+      this.flow = Math.min(P.FLOW_MAX, this.flow + 0.25);
       this.fx.burst(this.cx, this.footY, 16, '#ffe6a8');
       this.fx.shake(4);
     }
@@ -734,7 +744,7 @@ export class Player {
    *  landing: hand back everything the scuff took. */
   #recoveryRoll() {
     this.vx += Math.sign(this.vx || this.facing) * this.lostSpeed;
-    this.flow = Math.min(1, this.flow + this.lostFlow);
+    this.flow = Math.min(P.FLOW_MAX, this.flow + this.lostFlow);
     this.recentSpeed = Math.max(this.recentSpeed, Math.abs(this.vx));
     this.lostSpeed = 0;
     this.lostFlow = 0;
@@ -932,7 +942,7 @@ export class Player {
     this.h = P.H;
     this.vault = null;
     this.vy = 0;
-    this.flow = Math.min(1, this.flow + 0.12);
+    this.flow = Math.min(P.FLOW_MAX, this.flow + 0.12);
     this.t.land = 0.1;
 
     // Belt and braces: back out of anything we are still touching.
@@ -942,9 +952,11 @@ export class Player {
     }
     if (v.blocked) {                           // vaulted straight into a wall
       this.vx = 0;
-      this.flow *= 0.7;
-      this.#endBurst();
       this.fx.dust(this.x + (v.dir > 0 ? this.w : 0), this.cy, -v.dir * 40, 4);
+      // The climb is on rails, so a wall met halfway up it was never really
+      // yours to avoid — and a burst rides it out with its fuel intact either
+      // way (see #moveX).
+      if (!this.bursting) this.flow *= 0.7;
     }
 
     // Land on whatever the stride actually carried us onto.
@@ -1039,7 +1051,7 @@ export class Player {
     if (sp > 150 && (moving || this.sliding || !this.grounded)) this.flow += dt * 0.42;
     else if (sp < 70) this.flow -= dt * 1.1;
     else this.flow -= dt * 0.2;
-    this.flow = clamp(this.flow, 0, 1);
+    this.flow = clamp(this.flow, 0, P.FLOW_MAX);
   }
 
   #runFx(dt) {
@@ -1138,7 +1150,7 @@ export class Player {
     this.t.dashCool = 0;       // a spring hands it straight back, like a crystal
     this.t.refill = 0;
     this.t.noSnap = 0.16;
-    this.flow = Math.min(1, this.flow + 0.12);
+    this.flow = Math.min(P.FLOW_MAX, this.flow + 0.12);
     this.fx.burst(this.cx, this.footY, 14, '#ffe6a8');
     this.fx.shake(3);
     sfx.spring();
