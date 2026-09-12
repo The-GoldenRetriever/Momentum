@@ -71,8 +71,10 @@ function frame(now) {
   input.poll();
   acc += dt * scale;
   // Slow motion shrinks the simulated step to match, so the world still ticks at
-  // ~120Hz of real time: five-times-slow at a fixed step would judder badly.
-  const step = STEP * Math.max(scale, 0.15);
+  // ~120Hz of real time however deep the slow-mo goes: bullet time on a fixed
+  // step would judder badly. The floor is the scale itself, which keeps one
+  // step worth exactly STEP of wall clock — the clock the wind-up counts on.
+  const step = STEP * Math.max(scale, P.BURST_SCALE);
   let steps = 0;
   while (acc >= step && steps < 12) {
     // shrinking the step with the scale means one step is always STEP of real

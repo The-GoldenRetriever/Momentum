@@ -382,7 +382,8 @@ const WIND = Math.ceil(P.BURST_WIND * 120);   // steps from the press to the lau
     if (pl.vault) vaulted = true;
   });
   check('a burst still gives you time to read a ledge', cueSteps >= 6,
-    `${cueSteps} steps of prompt (${(cueSteps / 120 / 0.2).toFixed(2)}s of real time at x0.2)`);
+    `${cueSteps} steps of prompt (${(cueSteps / 120 / P.BURST_SCALE).toFixed(2)}s of real time ` +
+    `at x${P.BURST_SCALE})`);
   check('and to take it', vaulted);
 }
 

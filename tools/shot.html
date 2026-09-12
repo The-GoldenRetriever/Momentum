@@ -4,6 +4,7 @@
 <script type="module">
 // Deterministic frame grabber: ?at=<tile>&ay=<tile>&keys=right,down&steps=240
 import { Game } from '../src/game.js';
+import { P } from '../src/player.js';
 import { buildArt } from '../src/art.js';
 buildArt();
 const q = new URLSearchParams(location.search);
@@ -46,7 +47,7 @@ for (let i = 0; i < steps; i++) {
   keys.step();
   if (q.has('flow') && !game.player.bursting) game.player.flow = Number(q.get('flow'));
 }
-game.timeScale = game.player.timeWarped ? 0.2 : 1;
+game.timeScale = game.player.timeWarped ? P.BURST_SCALE : 1;
 if (game.player.timeWarped) for (let i = 0; i < 30; i++) game.renderer.zoom += (1.25 - game.renderer.zoom) * 0.4;
 game.cam.follow(game.player, 0.5);
 game.draw(1 / 150, 1 / 60);

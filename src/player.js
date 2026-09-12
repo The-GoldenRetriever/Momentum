@@ -101,7 +101,7 @@ export const P = {
   BURST_FLOW_MIN: 0.9,       // only off a full bar
   BURST_SPEED_MIN: 280,      // ... and only at a real sprint
   BURST_DRAIN: 0.3,          // bar per second while it runs (~3.3s of burst)
-  BURST_SCALE: 0.2,          // the world (and the clock) runs this slowly
+  BURST_SCALE: 0.15,         // the world (and the clock) runs this slowly
   BURST_GRACE: 0.35,         // stays cashable this long after you drop off it
   BURST_WIND: 0.09,          // real seconds the world drops away *before* you go:
                              // the press slows time first, then fires you
