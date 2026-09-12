@@ -50,6 +50,12 @@ export function drawHud(ctx, game) {
 
   // ---- state chips (only what is currently doing something)
   const chips = [];
+  if (p.bursting || p.burstWind > 0) chips.push(['burst', '#9cf6ff']);
+  else if (p.canBurst) chips.push(['v: burst ready', '#ffffff']);
+  if (p.vault) chips.push([p.vault.kind === 'up' ? 'vault' : 'roll', '#ffe6a8']);
+  else if (p.rolling > 0) chips.push(['roll', '#ffe6a8']);
+  else if (p.cue) chips.push([p.cue.kind === 'up' ? 'c: vault' : 'c: roll', '#ffd678']);
+  else if (p.t.refund > 0) chips.push(['c: roll out', '#ff9ecd']);
   if (p.dashing) chips.push(['dash', '#9cf6ff']);
   if (p.sliding) chips.push(['slide', '#ffd678']);
   if (p.wallDir !== 0) chips.push(['wall', '#cbb9ff']);
@@ -64,7 +70,13 @@ export function drawHud(ctx, game) {
   // ---- timer, top right
   const t = fmtTime(game.time);
   const tw = textWidth(t, 1);
-  drawText(ctx, t, VIEW_W - 8 - tw, 8, game.finished ? '#7dffc4' : '#cbc4e6', 1, '#100b20');
+  const slowed = game.timeScale < 0.92;
+  drawText(ctx, t, VIEW_W - 8 - tw, 8,
+    game.finished ? '#7dffc4' : slowed ? '#9cf6ff' : '#cbc4e6', 1, '#100b20');
+  if (slowed) {
+    const lbl = `x${game.timeScale.toFixed(2)}`;
+    drawText(ctx, lbl, VIEW_W - 12 - tw - textWidth(lbl, 1), 8, '#63f0ff', 1, '#100b20');
+  }
   const sub = `deaths ${p.deaths}`;
   drawText(ctx, sub, VIEW_W - 8 - textWidth(sub, 1), 16, '#5d5588', 1);
   if (game.best) {
@@ -108,6 +120,8 @@ function drawDebug(ctx, game) {
     `grounded ${p.grounded ? 1 : 0}  wall ${p.wallDir}  slide ${p.sliding ? 1 : 0}`,
     `flow ${p.flow.toFixed(2)}  top ${Math.round(p.topSpeed)}  dashes ${p.dashes}`,
     `coyote ${p.t.coyote.toFixed(2)} buffer ${p.t.buffer.toFixed(2)} super ${p.t.super.toFixed(2)}`,
+    `cue ${p.cue ? `${p.cue.kind} ${Math.round(p.cue.rise)}px` : '-'}  vaults ${p.vaults}`,
+    `burst ${p.bursting ? 'on' : p.canBurst ? 'ready' : '-'}  x${game.timeScale.toFixed(2)}  used ${p.bursts}`,
     `fps ${game.fps.toFixed(0)}  parts ${game.fx.parts.length}`,
   ];
   panel(ctx, 6, 28, 190, rows.length * 8 + 8, 0.7);

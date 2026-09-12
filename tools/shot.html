@@ -1,0 +1,54 @@
+<!doctype html><meta charset=utf-8><title>frame grab</title>
+<style>html,body{margin:0;background:#08060f}canvas{image-rendering:pixelated;display:block;width:960px;height:540px}</style>
+<canvas id=game width=480 height=270></canvas>
+<script type="module">
+// Deterministic frame grabber: ?at=<tile>&ay=<tile>&keys=right,down&steps=240
+import { Game } from '../src/game.js';
+import { buildArt } from '../src/art.js';
+buildArt();
+const q = new URLSearchParams(location.search);
+const ctx = document.getElementById('game').getContext('2d', { alpha: false });
+ctx.imageSmoothingEnabled = false;
+const game = new Game(ctx);
+
+class Keys {
+  constructor() { this.down = new Set(); this.pressed = new Set(); this.released = new Set(); }
+  set(list) {
+    const next = new Set(list);
+    for (const a of next) if (!this.down.has(a)) this.pressed.add(a);
+    for (const a of this.down) if (!next.has(a)) this.released.add(a);
+    this.down = next;
+  }
+  step() { this.pressed.clear(); this.released.clear(); }
+  held(a) { return this.down.has(a); }
+  hit(a) { return this.pressed.has(a); }
+  let_go(a) { return this.released.has(a); }
+  get moveX() { return (this.held('right') ? 1 : 0) - (this.held('left') ? 1 : 0); }
+  get moveY() { return (this.held('down') ? 1 : 0) - (this.held('up') ? 1 : 0); }
+}
+const keys = new Keys();
+const held = (q.get('keys') || '').split(',').filter(Boolean);
+const steps = Number(q.get('steps') || 120);
+const auto = q.get('auto');          // 'vault' calls every ledge; 'burst' also bursts
+if (q.has('at')) game.player.reset(Number(q.get('at')) * 16, Number(q.get('ay') || 0) * 16);
+if (q.has('vx')) game.player.vx = Number(q.get('vx'));
+if (q.has('flow')) game.player.flow = Number(q.get('flow'));
+const flip = Number(q.get('flip') || 0);   // step at which to reverse the stick
+const duck = Number(q.get('duck') || 0);   // step at which to start holding DOWN
+for (let i = 0; i < steps; i++) {
+  const k = held.map((a) => (flip && i >= flip && (a === 'right' || a === 'left')
+    ? (a === 'right' ? 'left' : 'right') : a));
+  if (duck && i >= duck) k.push('down');
+  if (auto && (game.player.cue || game.player.t.refund > 0)) k.push('vault');
+  if (auto === 'burst' && game.player.canBurst) k.push('burst');
+  keys.set(k);
+  game.update(1 / 120, keys);
+  keys.step();
+  if (q.has('flow') && !game.player.bursting) game.player.flow = Number(q.get('flow'));
+}
+game.timeScale = game.player.timeWarped ? 0.2 : 1;
+if (game.player.timeWarped) for (let i = 0; i < 30; i++) game.renderer.zoom += (1.25 - game.renderer.zoom) * 0.4;
+game.cam.follow(game.player, 0.5);
+game.draw(1 / 150, 1 / 60);
+document.title = 'ready';
+</script>

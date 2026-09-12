@@ -2,7 +2,7 @@
 
 import { buildTestArea } from './levels/test-area.js';
 import { TILE, clamp } from './level.js';
-import { Player } from './player.js';
+import { Player, P } from './player.js';
 import { Fx } from './particles.js';
 import { Camera } from './camera.js';
 import { Renderer, VIEW_W, VIEW_H } from './render.js';
@@ -36,6 +36,7 @@ export class Game {
     this.debug = false;
     this.muted = false;
     this.fps = 60;
+    this.timeScale = 1;
     this.activeSign = null;
     this.banner = 'MOMENTUM';
     this.bannerSub = 'test area — move to start';
@@ -44,7 +45,7 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ loop
-  update(dt, input) {
+  update(dt, input, realDt = dt) {
     const p = this.player;
 
     if (input.hit('debug')) this.debug = !this.debug;
@@ -52,7 +53,7 @@ export class Game {
     if (input.hit('restart')) this.restart();
     if (input.hit('respawn') && !p.dead) p.kill();
 
-    p.update(dt, input);
+    p.update(dt, input, realDt);
 
     if (p.dead && p.deadTimer <= 0) this.respawn();
 
@@ -74,8 +75,8 @@ export class Game {
     this.bannerT -= dt;
   }
 
-  draw(dt) {
-    this.renderer.draw(this, dt);
+  draw(dt, realDt = dt) {
+    this.renderer.draw(this, dt, realDt);
     drawHud(this.ctx, this);
   }
 
@@ -141,10 +142,15 @@ export class Game {
     this.activeSign = nearest;
   }
 
+  /** Air tearing past: the streaks start where a sprint does and thicken with
+   *  speed, so the screen itself tells you how fast you are going. */
   #speedFx(dt) {
     const p = this.player;
-    if (Math.abs(p.vx) > 290 && Math.random() < dt * 26) {
-      this.fx.speedLine(p.cx - Math.sign(p.vx) * 12, p.y + 2 + Math.random() * p.h, -p.vx * 0.3);
+    const sp = Math.abs(p.vx);
+    if (sp < P.TRAIL_SPEED) return;
+    const rate = 12 + (sp - P.TRAIL_SPEED) * 0.12;
+    if (Math.random() < dt * rate) {
+      this.fx.speedLine(p.cx - Math.sign(p.vx) * 11, p.y + 1 + Math.random() * p.h, -p.vx * 0.3);
     }
   }
 

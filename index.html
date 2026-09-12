@@ -23,18 +23,21 @@
     image-rendering: crisp-edges;
     display: block;
     background: #0b0a14;
-    box-shadow: 0 0 0 1px #221c38, 0 24px 80px -20px #000;
   }
+  /* the controls line fades out of the way once you start playing */
   #hint {
-    position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
-    font-size: 11px; letter-spacing: .12em; color: #4b4370;
+    position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%);
+    font-size: 11px; letter-spacing: .12em; color: #6c62a0;
     text-transform: uppercase; pointer-events: none; user-select: none;
+    text-shadow: 0 1px 0 #000, 0 0 8px #000;
+    animation: fade 9s ease-in forwards;
   }
+  @keyframes fade { 0%, 55% { opacity: .85 } 100% { opacity: 0 } }
 </style>
 </head>
 <body>
   <div id="wrap"><canvas id="game"></canvas></div>
-  <div id="hint">click to focus &middot; F1 debug &middot; M mute &middot; R respawn &middot; T restart run</div>
+  <div id="hint">jump space/z/j &middot; dash shift/x/k &middot; ledges c/l (hold) &middot; burst v &middot; f fullscreen</div>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>

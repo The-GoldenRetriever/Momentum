@@ -60,7 +60,17 @@ class Sfx {
   land()    { this.noise({ dur: 0.09, from: 900, to: 120, gain: 0.28 }); }
   step()    { this.noise({ dur: 0.04, from: 2200, to: 800, gain: 0.08 }); }
   ledge()   { this.tone({ freq: 720, to: 980, dur: 0.06, type: 'triangle', gain: 0.16 }); }
+  vault()   { this.noise({ dur: 0.12, from: 1600, to: 400, gain: 0.2 });
+              this.tone({ freq: 520, to: 880, dur: 0.12, type: 'triangle', gain: 0.22 }); }
+  cue()     { this.tone({ freq: 1180, dur: 0.05, type: 'triangle', gain: 0.1 }); }
+  // the world dropping away, just before the burst proper
+  burstWind() { this.tone({ freq: 1040, to: 300, dur: 0.1, type: 'triangle', gain: 0.16 });
+                this.noise({ dur: 0.12, from: 600, to: 2600, gain: 0.1 }); }
+  burst()   { this.noise({ dur: 0.5, from: 7000, to: 200, gain: 0.3 });
+              this.tone({ freq: 180, to: 1400, dur: 0.35, type: 'sawtooth', gain: 0.24 });
+              this.tone({ freq: 90, to: 60, dur: 0.9, type: 'triangle', gain: 0.2 }); }
   slide()   { this.noise({ dur: 0.3, from: 1800, to: 600, gain: 0.16 }); }
+  skid()    { this.noise({ dur: 0.09, from: 3400, to: 1400, gain: 0.1 }); }
   spring()  { this.tone({ freq: 300, to: 1100, dur: 0.18, type: 'triangle', gain: 0.4 }); }
   crystal() { this.tone({ freq: 880, dur: 0.07, type: 'triangle', gain: 0.3 });
               this.tone({ freq: 1320, dur: 0.09, type: 'triangle', gain: 0.25, delay: 0.06 }); }

@@ -45,8 +45,11 @@ export class Fx {
     });
   }
 
+  /** A streak tearing past. `x` is the end the streak starts from — it always
+   *  lies behind whatever is moving, so it never draws across it. */
   speedLine(x, y, vx) {
-    this.lines.push({ x, y, vx, life: 0.14, max: 0.14, len: 6 + Math.abs(vx) / 22 });
+    const len = 6 + Math.abs(vx) / 22;
+    this.lines.push({ x: vx < 0 ? x - len : x, y, vx, life: 0.14, max: 0.14, len });
   }
 
   shake(amount) { this.shakeAmt = Math.max(this.shakeAmt, amount); }

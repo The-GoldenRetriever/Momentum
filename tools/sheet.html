@@ -1,0 +1,25 @@
+<!doctype html><meta charset=utf-8><title>sprite sheet</title>
+<style>body{background:#1a1430;color:#cbc4e6;font:11px monospace;margin:0;padding:8px}
+canvas{image-rendering:pixelated}div{display:inline-block;margin:4px;text-align:center}</style>
+<body><div id=out></div>
+<script type="module">
+import { FRAMES, buildArt, sprites, SPRITE_W, SPRITE_H } from '../src/art.js';
+buildArt();
+const S = Number(new URLSearchParams(location.search).get('s') || 6);
+const only = new URLSearchParams(location.search).get('only');
+for (const [name, set] of Object.entries(sprites)) {
+  if (only && !only.split(',').includes(name)) continue;
+  for (let f = 0; f < set[0].length; f++) {
+    const d = document.createElement('div');
+    const c = document.createElement('canvas');
+    c.width = SPRITE_W*S; c.height = SPRITE_H*S;
+    const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+    g.fillStyle = '#2b2450'; g.fillRect(0,0,c.width,c.height);
+    g.fillStyle = '#3a3168'; g.fillRect(0,(SPRITE_H-1)*S,c.width,S);
+    g.drawImage(set[0][f], 0,0, c.width, c.height);
+    d.appendChild(c); d.appendChild(document.createElement('br'));
+    d.appendChild(document.createTextNode(name+' '+f));
+    document.getElementById('out').appendChild(d);
+  }
+}
+</script>

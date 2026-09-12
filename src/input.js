@@ -5,8 +5,11 @@ const BINDINGS = {
   right: ['ArrowRight', 'KeyD'],
   up:    ['ArrowUp', 'KeyW'],
   down:  ['ArrowDown', 'KeyS'],
-  jump:  ['Space', 'KeyZ', 'KeyC'],
-  dash:  ['ShiftLeft', 'ShiftRight', 'KeyX', 'KeyJ'],
+  // Two comfortable hands: Z/X/C/Space for arrow players, J/K/L for WASD ones.
+  jump:  ['Space', 'KeyZ', 'KeyJ'],
+  dash:  ['ShiftLeft', 'ShiftRight', 'KeyX', 'KeyK'],
+  vault: ['KeyC', 'KeyL'],          // ledges: vault up, roll down (hold to chain)
+  burst: ['KeyV', 'Semicolon'],     // cash a full flow bar in for bullet time
   respawn: ['KeyR'],
   restart: ['KeyT'],
   mute:  ['KeyM'],
@@ -14,8 +17,10 @@ const BINDINGS = {
 };
 
 const PAD = { // standard gamepad button indices
-  jump: [0, 3],
+  jump: [0],
+  vault: [3],
   dash: [2, 1, 5, 7],
+  burst: [6, 4],
   left: [14], right: [15], up: [12], down: [13],
 };
 

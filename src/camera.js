@@ -18,9 +18,11 @@ export class Camera {
   }
 
   follow(p, dt) {
-    const targetLookX = clamp(p.vx * 0.22, -70, 70);
+    // at burst speed you need to see a lot further down the track
+    const reach = p.bursting ? 150 : 70;
+    const targetLookX = clamp(p.vx * 0.22, -reach, reach);
     const targetLookY = clamp(p.vy * 0.10, -34, 52);
-    this.lookX += (targetLookX - this.lookX) * Math.min(1, dt * 3.2);
+    this.lookX += (targetLookX - this.lookX) * Math.min(1, dt * (p.bursting ? 5 : 3.2));
     this.lookY += (targetLookY - this.lookY) * Math.min(1, dt * 2.4);
 
     const tx = p.cx + this.lookX - this.vw / 2;

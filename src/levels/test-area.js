@@ -25,26 +25,35 @@ export function buildTestArea() {
   ground(2, 30);
   L.spawn = { x: 6 * TILE, y: (GY - 4) * TILE };
   L.sign(5, GY - 1, 'RUN', [
-    'Arrows / WASD to move, SPACE to jump.',
+    'Arrows or WASD to move. Jump: SPACE, Z or J.',
     'Hold a direction: you keep accelerating.',
     'Top speed grows as the FLOW bar fills.',
   ]);
   L.platform(14, GY - 4, 5);
   L.platform(21, GY - 6, 5);
-  L.rect(25, GY - 1, 2, H - GY + 1);
+  L.sign(23, GY - 1, 'VAULT', [
+    'Ledges are not climbed for you. C (or L) takes them.',
+    'Run at one: a VAULT prompt appears over your head.',
+    'Press it while the prompt is up and you go over in',
+    'your stride, losing nothing. The window is kind.',
+  ]);
+  L.rect(26, GY - 1, 2, H - GY + 1);      // first ledge: vault it
   pit(30, 5);
   ground(35, 40);
   L.sign(36, GY - 1, 'FALL', [
-    'Down + SPACE drops through thin platforms.',
+    'Down + jump drops through thin platforms.',
     'Hold DOWN in the air to fall faster.',
+    'Landing on your feet costs speed, and the longer',
+    'you were in the air the more it costs. C on the way',
+    'off the lip, or just after landing, keeps all of it.',
   ]);
 
   // ======================================================== B — auto ledges
   L.sign(41, GY - 1, 'LEDGES', [
-    'Sprint into a small ledge and you step over it',
-    'without losing a single pixel of speed.',
-    'Walk into the same ledge and you stop.',
-    'Run off the far side: you stay glued to the steps.',
+    'Five up, five down. Call every one of them with C.',
+    'Up is a vault, down is a roll — both keep all of it.',
+    'HOLD C on the way down and you roll off every one.',
+    'Scuffed a landing? Hit C late and you get it back.',
   ]);
   ground(40, 44);
   L.stairs(44, GY - 1, 5, 3, +1, H - 1);   // five 1-tile steps up
@@ -88,7 +97,7 @@ export function buildTestArea() {
   // ============================================================== E — dash
   ground(150, 162);
   L.sign(152, GY - 1, 'DASH', [
-    'SHIFT / X dashes in any of 8 directions.',
+    'SHIFT, X or K dashes in any of 8 directions.',
     'A dash hands off into a run faster than you can run.',
     'Dash, then jump immediately: SUPER (long, low, fast).',
     'Dash diagonally into the floor: WAVEDASH.',
@@ -104,9 +113,11 @@ export function buildTestArea() {
 
   // ============================================================= F — slide
   L.sign(200, GY - 1, 'SLIDE', [
-    'DOWN while moving fast starts a slide.',
+    'DOWN while moving fast throws you in feet first.',
     'Only a slide fits under the low rock.',
     'A slide keeps its speed — jump out the far side.',
+    'Let it die under the rock and you are stuck ducking,',
+    'crouch-slow, until the roof lets you stand.',
   ]);
   L.rect(210, GY - 6, 14, 5);              // roof block over the tunnel
   L.rect(210, GY - 1, 14, 1, T.LOWCEIL);   // the low lip itself
@@ -132,15 +143,25 @@ export function buildTestArea() {
   // ============================================================== H — flow
   L.sign(258, GY - 15, 'FLOW', [
     'Everything at once, downhill, to the gate.',
-    'Nothing below needs you to stop.',
+    'Nothing below needs you to stop. Fill the bar.',
   ]);
   L.ramp(264, GY - 4, 10, -1, H - 1);      // long drop-in ramp
   ground(274, 280, GY - 4);
+  L.sign(275, GY - 5, 'BURST', [
+    'A full FLOW bar is worth one burst: press V.',
+    'You go three times a sprint, and the world — the',
+    'clock included — drops into slow motion, so there',
+    'is still time to read a ledge and call it.',
+    'Clipped something? It stays live a beat longer.',
+    'DOWN in a burst still slides — the only way under',
+    'the low rock at that speed.',
+    'The bar is the fuel gauge. Spend it well.',
+  ]);
   L.stairs(280, GY - 1, 4, 2, -1, H - 1);  // rolling 1-tile steps down
   ground(288, 292);
   pit(292, 6);
   ground(298, 320);
-  L.rect(304, GY - 1, 2, H - GY + 1);      // a bump to sprint straight over
+  L.rect(304, GY - 1, 2, H - GY + 1);      // one last ledge to vault at full tilt
   L.rect(308, GY - 6, 9, 5);
   L.rect(308, GY - 1, 9, 1, T.LOWCEIL);    // slide finish
   ground(320, W - 2);

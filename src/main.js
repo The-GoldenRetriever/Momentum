@@ -1,6 +1,7 @@
 // main.js — canvas sizing and the fixed-step game loop.
 
 import { Game } from './game.js';
+import { P } from './player.js';
 import { VIEW_W, VIEW_H } from './render.js';
 import { buildArt } from './art.js';
 import { Input } from './input.js';
@@ -17,19 +18,29 @@ canvas.width = VIEW_W;
 canvas.height = VIEW_H;
 ctx.imageSmoothingEnabled = false;
 
+// Fill as much of the window as the aspect ratio allows. Whole-number scaling
+// is sharper, so take it whenever it costs less than a sliver of the screen.
 function resize() {
-  const scale = Math.max(1, Math.min(
-    Math.floor(window.innerWidth / VIEW_W),
-    Math.floor(window.innerHeight / VIEW_H),
-  ));
-  canvas.style.width = `${VIEW_W * scale}px`;
-  canvas.style.height = `${VIEW_H * scale}px`;
+  const fit = Math.min(window.innerWidth / VIEW_W, window.innerHeight / VIEW_H);
+  const whole = Math.max(1, Math.floor(fit));
+  const scale = (fit - whole) / fit < 0.08 ? whole : fit;
+  canvas.style.width = `${Math.round(VIEW_W * scale)}px`;
+  canvas.style.height = `${Math.round(VIEW_H * scale)}px`;
 }
 window.addEventListener('resize', resize);
+document.addEventListener('fullscreenchange', resize);
 resize();
 
 const input = new Input(window);
 const game = new Game(ctx);
+
+// F toggles fullscreen — the game is meant to be played big.
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyF') return;
+  e.preventDefault();
+  if (document.fullscreenElement) document.exitFullscreen?.();
+  else document.documentElement.requestFullscreen?.().catch(() => {});
+});
 
 // first gesture unlocks WebAudio
 for (const ev of ['pointerdown', 'keydown']) {
@@ -39,6 +50,7 @@ for (const ev of ['pointerdown', 'keydown']) {
 let last = performance.now() / 1000;
 let acc = 0;
 let fpsAvg = 60;
+let scale = 1;                 // eased world time: 1 normally, BURST_SCALE mid-burst
 
 function frame(now) {
   requestAnimationFrame(frame);
@@ -48,17 +60,30 @@ function frame(now) {
   fpsAvg += (1 / Math.max(dt, 0.0001) - fpsAvg) * 0.05;
   game.fps = fpsAvg;
 
+  // A burst slows the world down — including the run clock, which only ticks
+  // on simulated time. Easing the scale keeps the transition from snapping, and
+  // it drops in far faster than it lifts: the whole point of the wind-up beat
+  // is that the world is already crawling by the time the burst fires.
+  const target = game.player.timeWarped ? P.BURST_SCALE : 1;
+  scale += (target - scale) * Math.min(1, dt * (target < scale ? 30 : 9));
+  game.timeScale = scale;
+
   input.poll();
-  acc += dt;
+  acc += dt * scale;
+  // Slow motion shrinks the simulated step to match, so the world still ticks at
+  // ~120Hz of real time: five-times-slow at a fixed step would judder badly.
+  const step = STEP * Math.max(scale, 0.15);
   let steps = 0;
-  while (acc >= STEP && steps < 8) {
-    game.update(STEP, input);
-    acc -= STEP;
+  while (acc >= step && steps < 12) {
+    // shrinking the step with the scale means one step is always STEP of real
+    // time, which is the clock the burst wind-up counts on
+    game.update(step, input, STEP);
+    acc -= step;
     steps++;
     input.pressed.clear();         // an edge is consumed by exactly one step
     input.released.clear();
   }
   input.flush();
-  game.draw(dt);
+  game.draw(dt * scale, dt);
 }
 requestAnimationFrame(frame);
