@@ -1,8 +1,12 @@
 <!doctype html><meta charset=utf-8><title>frame grab</title>
 <style>html,body{margin:0;background:#08060f}canvas{image-rendering:pixelated;display:block;width:960px;height:540px}</style>
 <canvas id=game width=480 height=270></canvas>
+<script>
+// a frame that never finishes says why in the title, where --dump-dom can see it
+addEventListener('error', (e) => { document.title = `error: ${e.message} @${e.lineno}`; });
+</script>
 <script type="module">
-// Deterministic frame grabber: ?at=<tile>&ay=<tile>&keys=right,down&steps=240
+// Deterministic frame grabber: ?at=<tile>&ay=<tile>&keys=right,down&steps=240 (&level=<n>)
 import { Game } from '../src/game.js';
 import { P } from '../src/player.js';
 import { buildArt } from '../src/art.js';
@@ -51,6 +55,21 @@ for (let i = 0; i < steps; i++) {
 game.timeScale = game.player.timeWarped ? P.BURST_SCALE : 1;
 if (game.player.timeWarped) for (let i = 0; i < 30; i++) game.renderer.zoom += (1.25 - game.renderer.zoom) * 0.4;
 game.cam.follow(game.player, 0.5);
+// &next=<steps> finishes the level after the run, picks "next level" and
+// plays that many steps of the walk-off / loading screen before grabbing
+if (q.has('next')) {
+  game.finished = true;
+  game.nextLevel();
+  const idle = new Keys();
+  for (let i = 0; i < Number(q.get('next')); i++) game.update(1 / 120, idle, 1 / 120);
+}
+// &screen=title|select|pause|results[&sel=<row>] grabs one of the menus
+const scr = q.get('screen');
+if (scr === 'title') game.toTitle();
+else if (scr === 'results') { game.finished = true; game.time = 63.42; game.best = 58.1; game.ui.show('results'); }
+else if (scr) { if (scr === 'select') game.playing = false; game.ui.show(scr); }
+if (scr && q.has('sel')) game.ui.sel = Number(q.get('sel'));
+if (scr && scr !== 'pause' && scr !== 'results') game.draw(1 / 150, 1 / 60);   // let the pan settle
 // &menu=open|capture[&sel=<row>] grabs the binding screen over the frame
 const menuArg = q.get('menu');
 if (menuArg) {

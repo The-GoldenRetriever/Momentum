@@ -3,6 +3,7 @@
 import { drawText, textWidth } from './font.js';
 import { VIEW_W, VIEW_H } from './render.js';
 import { P } from './player.js';
+import { keyName } from './input.js';
 
 const barW = 74;
 
@@ -55,14 +56,20 @@ export function drawHud(ctx, game) {
     if (i < p.dashes) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx + 1, dy + 1, 1, 1); }
   }
 
-  // ---- state chips (only what is currently doing something)
+  // ---- state chips (only what is currently doing something). The prompts
+  // name whatever key is bound now, so a rebind does not leave them lying.
+  const inp = game.ui?.input;
+  const key = (a, fallback) => {
+    const code = inp?.keysFor(a)[0];
+    return code ? keyName(code).toLowerCase() : fallback;
+  };
   const chips = [];
   if (p.bursting || p.burstWind > 0) chips.push(['burst', '#9cf6ff']);
-  else if (p.canBurst) chips.push(['v: burst ready', '#ffffff']);
+  else if (p.canBurst) chips.push([`${key('burst', 'v')}: burst ready`, '#ffffff']);
   if (p.vault) chips.push([p.vault.kind === 'up' ? 'vault' : 'roll', '#ffe6a8']);
   else if (p.rolling > 0) chips.push(['roll', '#ffe6a8']);
-  else if (p.cue) chips.push([p.cue.kind === 'up' ? 'c: vault' : 'c: roll', '#ffd678']);
-  else if (p.t.refund > 0) chips.push(['c: roll out', '#ff9ecd']);
+  else if (p.cue) chips.push([`${key('vault', 'c')}: ${p.cue.kind === 'up' ? 'vault' : 'roll'}`, '#ffd678']);
+  else if (p.t.refund > 0) chips.push([`${key('vault', 'c')}: roll out`, '#ff9ecd']);
   if (p.dashing) chips.push(['dash', '#9cf6ff']);
   if (p.sliding) chips.push(['slide', '#ffd678']);
   if (p.wallDir !== 0) chips.push(['wall', '#cbb9ff']);
@@ -115,7 +122,8 @@ export function drawHud(ctx, game) {
     ctx.globalAlpha = 1;
   }
 
-  if (game.muted) drawText(ctx, 'muted', 8, 8, '#4b4370', 1);
+  if (game.levelInfo) drawText(ctx, `${game.levelIndex + 1} ${game.levelInfo.name}`, 8, 8, '#5d5588', 1);
+  if (game.muted) drawText(ctx, 'muted', 8, 16, '#4b4370', 1);
   if (game.debug) drawDebug(ctx, game);
 }
 

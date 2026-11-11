@@ -4,7 +4,7 @@ import { Game } from './game.js';
 import { P } from './player.js';
 import { VIEW_W, VIEW_H } from './render.js';
 import { buildArt } from './art.js';
-import { Input, keyName } from './input.js';
+import { Input } from './input.js';
 import { sfx } from './audio.js';
 
 const STEP = 1 / 120;          // physics step; rendering is per animation frame
@@ -32,21 +32,11 @@ document.addEventListener('fullscreenchange', resize);
 resize();
 
 const input = new Input(window);
-const game = new Game(ctx, input);
+// The title screen leads, unless the URL asks for a particular level or spot.
+const q = new URLSearchParams(location.search);
+const game = new Game(ctx, input, { menus: !q.has('level') && !q.has('at') });
+input.onBlur = () => game.autoPause();
 
-// The controls line reads back whatever is actually bound, so it stays honest
-// after a trip through the binding screen.
-function writeHint() {
-  const keys = (action, n = 2) =>
-    input.keysFor(action).slice(0, n).map(keyName).join('/').toLowerCase() || 'unbound';
-  const hint = document.getElementById('hint');
-  if (hint) {
-    hint.textContent = `jump ${keys('jump', 3)} \u00b7 dash ${keys('dash')} \u00b7 ` +
-      `ledges ${keys('vault')} (hold) \u00b7 burst ${keys('burst', 1)} \u00b7 ` +
-      `o controls \u00b7 f fullscreen`;
-  }
-}
-writeHint();
 
 // F toggles fullscreen — the game is meant to be played big.
 window.addEventListener('keydown', (e) => {
@@ -99,7 +89,19 @@ function frame(now) {
     input.pressed.clear();         // an edge is consumed by exactly one step
     input.released.clear();
   }
-  input.flush();
-  game.draw(dt * scale, dt);
+  // A long stall (a level bake, a GC pause, a tab coming back) leaves more
+  // backlog than the cap allows. Replaying it over the next few frames played
+  // the game in fast-forward for a moment, which at full speed is a death you
+  // never saw coming, so whatever the cap left over is dropped instead.
+  if (steps === 12) acc = Math.min(acc, step);
+  // No flush out here. Physics runs at 120Hz, so on a faster display (and all
+  // through a burst's slow motion) plenty of frames run no step at all, and
+  // clearing the edges at the end of one of those threw away any press that
+  // landed in it: a jump that simply never happened. An edge now waits for
+  // the next step to consume it, however many frames that takes.
+
+  // How far into the next step this frame falls, so the picture can sit
+  // between the last two steps instead of snapping to whole ones
+  game.draw(dt * scale, dt, Math.min(1, acc / step));
 }
 requestAnimationFrame(frame);

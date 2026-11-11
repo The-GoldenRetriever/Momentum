@@ -1,7 +1,7 @@
 // audio.js — tiny WebAudio synth. No samples, everything is oscillators + noise.
 
 class Sfx {
-  constructor() { this.ctx = null; this.muted = false; this.master = null; }
+  constructor() { this.ctx = null; this.muted = false; this.master = null; this.white = null; }
 
   #wake() {
     if (!this.ctx) {
@@ -39,18 +39,25 @@ class Sfx {
     const ctx = this.#wake();
     if (!ctx || this.muted) return;
     const t = ctx.currentTime;
-    const len = Math.ceil(ctx.sampleRate * dur);
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
-    const src = ctx.createBufferSource(); src.buffer = buf;
+    // One second of white noise, made once and played from a random spot.
+    // Building a fresh buffer for every footstep and skid churned the garbage
+    // collector in the middle of a run, and a collection is a dropped frame.
+    if (!this.white) {
+      this.white = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const data = this.white.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    }
+    const src = ctx.createBufferSource(); src.buffer = this.white;
     const filt = ctx.createBiquadFilter();
     filt.type = 'bandpass';
     filt.frequency.setValueAtTime(from, t);
     filt.frequency.exponentialRampToValueAtTime(to, t + dur);
-    const g = ctx.createGain(); g.gain.value = gain;
+    // the same straight fade to silence the old per-call buffer had baked in
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(gain, t);
+    g.gain.linearRampToValueAtTime(0, t + dur);
     src.connect(filt).connect(g).connect(this.master);
-    src.start(t);
+    src.start(t, Math.random() * Math.max(0, 1 - dur), dur);
   }
 
   jump()    { this.tone({ freq: 340, to: 660, dur: 0.1, gain: 0.35 }); }
@@ -72,6 +79,11 @@ class Sfx {
   slide()   { this.noise({ dur: 0.3, from: 1800, to: 600, gain: 0.16 }); }
   skid()    { this.noise({ dur: 0.09, from: 3400, to: 1400, gain: 0.1 }); }
   spring()  { this.tone({ freq: 300, to: 1100, dur: 0.18, type: 'triangle', gain: 0.4 }); }
+  boost()   { this.tone({ freq: 220, to: 880, dur: 0.14, type: 'square', gain: 0.18 });
+              this.noise({ dur: 0.16, from: 1200, to: 4200, gain: 0.14 }); }
+  crumble() { this.noise({ dur: 0.2, from: 700, to: 140, gain: 0.22 }); }
+  menuMove(){ this.tone({ freq: 660, dur: 0.04, type: 'triangle', gain: 0.14 }); }
+  menuPick(){ this.tone({ freq: 520, to: 1040, dur: 0.09, type: 'triangle', gain: 0.22 }); }
   crystal() { this.tone({ freq: 880, dur: 0.07, type: 'triangle', gain: 0.3 });
               this.tone({ freq: 1320, dur: 0.09, type: 'triangle', gain: 0.25, delay: 0.06 }); }
   death()   { this.tone({ freq: 420, to: 60, dur: 0.4, type: 'sawtooth', gain: 0.35 }); }

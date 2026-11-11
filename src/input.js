@@ -16,10 +16,17 @@ export const DEFAULT_BINDS = {
   burst: ['KeyV', 'Semicolon'],     // cash a full flow bar in for bullet time
   respawn: ['KeyR'],
   restart: ['KeyT'],
+  next:  ['KeyN'],                  // on to the next level, from the results panel
+  pause: ['Escape', 'KeyP'],        // pause menu in a run, back out of the other menus
   mute:  ['KeyM'],
   debug: ['F1'],
-  keys:  ['KeyO', 'Escape'],        // opens the binding screen — not rebindable
+  keys:  ['KeyO'],                  // opens the binding screen — not rebindable
+  confirm: ['Enter', 'NumpadEnter'], // picks a menu row (jump does too) — not rebindable
 };
+
+// Actions the binding screen never touches: the ways in and out of the menus
+// stay where they are, so no binding can lock you out of them.
+const FIXED = ['keys', 'confirm'];
 
 // The rows the binding screen offers, in the order it lists them. `keys` is
 // deliberately absent: the one way back into this screen stays where it is.
@@ -34,6 +41,8 @@ export const ACTIONS = [
   ['burst', 'burst'],
   ['respawn', 'respawn'],
   ['restart', 'restart run'],
+  ['next', 'next level'],
+  ['pause', 'pause / back'],
   ['mute', 'mute'],
   ['debug', 'debug overlay'],
 ];
@@ -77,7 +86,7 @@ function loadBinds() {
         clean[a] = codes.filter((c) => typeof c === 'string').slice(0, MAX_KEYS);
       }
     }
-    delete clean.keys;
+    for (const a of FIXED) delete clean[a];
     return cloneBinds(clean);
   } catch {
     return cloneBinds({});
@@ -89,6 +98,8 @@ const PAD = { // standard gamepad button indices
   vault: [3],
   dash: [2, 1, 5, 7],
   burst: [6, 4],
+  pause: [9],                       // start
+  restart: [8],                     // back / select
   left: [14], right: [15], up: [12], down: [13],
 };
 
@@ -113,7 +124,10 @@ export class Input {
     target.addEventListener('keyup', (e) => {
       for (const a of this.#actionsFor(e.code)) { this.down.delete(a); this.released.add(a); }
     });
-    target.addEventListener('blur', () => this.down.clear());
+    // Losing focus drops every held key (the matching keyups go elsewhere) and
+    // tells the game, which pauses a run rather than leaving it going unseen.
+    this.onBlur = null;
+    target.addEventListener('blur', () => { this.clear(); this.onBlur?.(); });
   }
 
   #actionsFor(code) {
@@ -128,7 +142,7 @@ export class Input {
   /** Puts `code` at the front of an action's list, trimming the oldest key off
    *  the end once it is full. A key may serve two actions (up also jumps). */
   addKey(action, code) {
-    if (!(action in this.binds) || action === 'keys') return false;
+    if (!(action in this.binds) || FIXED.includes(action)) return false;
     const list = this.binds[action].filter((c) => c !== code);
     list.unshift(code);
     this.binds[action] = list.slice(0, MAX_KEYS);
@@ -143,7 +157,7 @@ export class Input {
   }
 
   clearKeys(action) {
-    if (!(action in this.binds) || action === 'keys') return;
+    if (!(action in this.binds) || FIXED.includes(action)) return;
     this.binds[action] = [];
     this.#save();
   }
@@ -155,7 +169,7 @@ export class Input {
 
   #save() {
     const out = { ...this.binds };
-    delete out.keys;
+    for (const a of FIXED) delete out[a];
     try { localStorage.setItem(STORE_KEY, JSON.stringify(out)); } catch { /* private mode */ }
   }
 

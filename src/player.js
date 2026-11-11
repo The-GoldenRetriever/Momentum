@@ -19,16 +19,23 @@ export const P = {
 
   RUN_BASE: 190,             // top speed with no flow built up
   RUN_FLOW: 140,             // extra top speed at one full bar of flow
-  FLOW_MAX: 1.6,             // the bar holds more than it spends on running:
-                             // the first bar buys speed, the rest is burst fuel
+  RUN_OVER: 80,              // ... and more again as the overfill tops up: hold
+                             // top speed and you keep getting faster
+  FLOW_MAX: 1.6,             // the bar holds more than one bar: the overfill
+                             // is top gear and burst fuel at once
+  FLOW_GAIN: 0.6,            // bar per second while you keep up a real run
+  FLOW_DRAIN: 0.5,           // ... per second lost coasting or holding back
+  FLOW_STALL: 1.8,           // ... and per second lost crawling (under 70 px/s)
   ACCEL: 1500,
   ACCEL_AIR: 1150,
   TURN_BOOST: 2.1,           // how much faster you accelerate when reversing
-  FRICTION: 1700,
+  FRICTION: 2300,            // let go and you lose it: momentum is kept, not given
   FRICTION_AIR: 220,
   OVERSPEED_DRAG: 260,       // gentle bleed when moving faster than your top speed
 
   JUMP_V: 420,
+  JUMP_SPEED_LIFT: 0.35,     // extra lift per px/s of run above RUN_BASE ...
+  JUMP_LIFT_MAX: 70,         // ... up to this: faster jumps go higher and further
   JUMP_CUT: 0.42,
   COYOTE: 0.10,
   JUMP_BUFFER: 0.12,
@@ -79,6 +86,7 @@ export const P = {
   VAULT_RISE_RATE: 120,      // px of climb per second — a tall lip takes longer
   VAULT_MIN_TIME: 0.10,      // ... but never long enough to break a stride
   VAULT_MAX_TIME: 0.26,
+  VAULT_SNAP: 0.03,          // the quickest a fast vault can get the climb done
   VAULT_EXIT: 165,           // you always come out of a vault moving
   VAULT_BUFFER: 0.16,        // an early press on the vault key still counts
   MANTLE_HOLD: 0.35,         // lean into a ledge this long and you climb it anyway
@@ -97,13 +105,20 @@ export const P = {
   LEDGE_AIR_FULL: 0.60,      // ... and where the airtime tax tops out
   LEDGE_AIR_LOSS: 0.34,      // extra fraction a long drop on your feet eats
   LEDGE_LOSS_MAX: 0.60,      // no single fumbled landing takes more than this
+  LAND_FREE: 80,             // a jump coming down more than this from its peak
+  LAND_FULL: 220,            // ... costs speed, reaching LAND_LOSS by here,
+  LAND_LOSS: 0.40,           // unless you roll out of it (C on landing)
 
   // --- burst: spend a full flow bar on bullet time -----------------------
-  BURST_SPEED: 980,          // genuinely silly, which is the point
+  BURST_SPEED: 560,          // SPEED x SCALE is what you see on screen
+                             // (~118 px/s real): change one, rebalance both
+  BURST_DASH: 1000,          // a dash inside a burst: the one thing that outruns
+                             // it, or a dash would be a brake mid-burst
   BURST_FLOW_MIN: 0.9,       // only off a full bar
   BURST_SPEED_MIN: 280,      // ... and only at a real sprint
-  BURST_DRAIN: 0.3,          // bar per second while it runs (~3.3s of burst)
-  BURST_SCALE: 0.15,         // the world (and the clock) runs this slowly
+  BURST_DRAIN: 0.8,          // bar per world second: one bar is ~1.25s of burst
+                             // (~6 real seconds at BURST_SCALE), a full tank ~2s
+  BURST_SCALE: 0.21,         // the world (and the clock) runs this slowly
   BURST_GRACE: 0.35,         // stays cashable this long after you drop off it
   BURST_WIND: 0.09,          // real seconds the world drops away *before* you go:
                              // the press slows time first, then fires you
@@ -154,6 +169,7 @@ export class Player {
       burstReady: 0, skid: 0, skidFx: 0, ghost: 0,
     };
     this.dashDir = { x: 1, y: 0 };
+    this.dashSpeed = P.DASH_SPEED;
     this.trail = [];
     this.bumpDir = 0;
     this.scarf = null;
@@ -172,6 +188,8 @@ export class Player {
     this.lostSpeed = 0;        // banked by a scuffed drop, refunded by a late roll
     this.lostFlow = 0;
     this.airTime = 0;          // how long you have been off the ground
+    this.airPeak = null;       // highest the feet got this time in the air: a
+                               // respawn must not inherit the peak of a fatal jump
     this.footfall = false;     // a stride just planted a boot — one frame only
   }
 
@@ -193,9 +211,13 @@ export class Player {
   get dashing() { return this.t.dash > 0; }
   get vaulting() { return this.vault !== null; }
   get skidding() { return this.t.skid > 0; }
-  // Running tops out at one bar. Flow past that is headroom for the burst, not
-  // more sprint — the overfill is fuel you are carrying, not speed you have.
-  get topSpeed() { return P.RUN_BASE + P.RUN_FLOW * Math.min(1, this.flow); }
+  // The first bar buys sprint speed; the overfill past it (which only fills
+  // while you are already holding top speed) buys a top gear on top of that,
+  // and doubles as burst fuel. Speed you keep is speed you get more of.
+  get topSpeed() {
+    const over = clamp((this.flow - 1) / (P.FLOW_MAX - 1), 0, 1);
+    return P.RUN_BASE + P.RUN_FLOW * Math.min(1, this.flow) + P.RUN_OVER * over;
+  }
   get speed() { return Math.abs(this.vx); }
   get sprinting() { return this.speed > P.RUN_BASE * 0.92; }
 
@@ -234,6 +256,9 @@ export class Player {
     // measured from the frame you left the ground, so a landing knows how long
     // it had to think about it
     this.airTime = this.grounded ? 0 : this.airTime + dt;
+    // the highest the feet have been since leaving the ground: a landing is
+    // priced on how far it came down from there
+    this.airPeak = this.grounded ? this.footY : Math.min(this.airPeak ?? this.footY, this.footY);
     this.#remember(dt);
 
     let ix = input.moveX;
@@ -260,6 +285,7 @@ export class Player {
     // A press takes the ledge in front of you; holding the key takes every
     // descent you meet, so a staircase can be run straight down.
     const holding = input.held('vault');
+    this.holdingVault = holding;       // a hard landing reads it (see #landCost)
     if (!this.vault && !this.dashing) {
       if ((t.vaultBuf > 0 || (holding && this.cue?.kind === 'down')) && this.cue) this.#startVault();
       else if ((t.vaultBuf > 0 || holding) && t.refund > 0) this.#recoveryRoll();
@@ -280,8 +306,8 @@ export class Player {
     // --- dash motion ------------------------------------------------------
     if (this.dashing) {
       t.dash -= dt;
-      this.vx = this.dashDir.x * P.DASH_SPEED;
-      this.vy = this.dashDir.y * P.DASH_SPEED;
+      this.vx = this.dashDir.x * this.dashSpeed;
+      this.vy = this.dashDir.y * this.dashSpeed;
       if (t.dash <= 0) this.#endDash();
     } else {
       this.#horizontal(dt, ix);
@@ -389,7 +415,10 @@ export class Player {
     // Under a low ceiling there is nowhere to stand up into: hold the buffered
     // jump until the roof clears instead of forcing the hitbox into the rock.
     if (!this.#tryStand()) return;
-    this.vy = -P.JUMP_V;
+    // the faster you are running, the more the jump lifts you: speed carries
+    // into height, and height into distance
+    const lift = clamp((Math.abs(this.vx) - P.RUN_BASE) * P.JUMP_SPEED_LIFT, 0, P.JUMP_LIFT_MAX);
+    this.vy = -(P.JUMP_V + lift);
     // super / hyper: cash a fresh dash in for horizontal speed
     if (t.super > 0) {
       if (this.dashDir.y > 0) { this.vx = this.facing * P.HYPER_X; this.vy = -P.JUMP_V * 0.82; }
@@ -423,6 +452,11 @@ export class Player {
     this.flow = Math.min(P.FLOW_MAX, this.flow + 0.08);
     this.fx.burst(this.x + (dir > 0 ? this.w : 0), this.cy, 8, '#cbb9ff');
     sfx.wallJump();
+    // A wall jump turns you around, and turning back has always dropped a
+    // burst. It has to here in particular: the burst pins vx into the wall
+    // every step, so if it survived you were straight back on the wall for
+    // another jump — an endless climb, refuelled by each kick's flow.
+    this.#endBurst();
   }
 
   #startDash(ix, iy) {
@@ -432,6 +466,10 @@ export class Player {
     this.dashDir = { x: dx / len, y: dy / len };
     this.facing = dx !== 0 ? Math.sign(dx) : this.facing;
     this.dashes--;
+    // fixed for the whole dash, so a burst running out mid-dash cannot cut it short
+    this.dashSpeed = this.bursting ? P.BURST_DASH : P.DASH_SPEED;
+    // the run you were already making in the dash's direction, for the hand-off
+    this.dashEntry = Math.sign(this.vx) === Math.sign(this.dashDir.x) ? Math.abs(this.vx) : 0;
     this.t.dash = P.DASH_TIME;
     this.t.dashBuf = 0;
     // nothing hands the dash back while it is still going — a dash along the
@@ -455,7 +493,10 @@ export class Player {
     this.t.dashCool = P.DASH_GAP;
     this.t.refill = P.DASH_GAP;
     const d = this.dashDir;
-    this.vx = d.x !== 0 ? Math.sign(d.x) * P.DASH_END : this.vx * 0.4;
+    // A dash hands off into a run faster than you can run, and never slower
+    // than you were already going its way: dashing off a boost pad used to
+    // drop you from 520 to 330, a dash that cost the speed it was meant to add.
+    this.vx = d.x !== 0 ? Math.sign(d.x) * Math.max(P.DASH_END, this.dashEntry ?? 0) : this.vx * 0.4;
     this.vy = d.y < 0 ? -170 : 0;
     if (this.grounded) this.vy = 0;
   }
@@ -467,7 +508,7 @@ export class Player {
       this.crouching = false;
       // A burst survives a slide: the burst owns your speed either way, so
       // ducking inside one is a change of posture, not a change of pace — and
-      // it is the only way to take the low rock at 980 px/s.
+      // it is the only way to take the low rock at burst speed.
       this.#setHeight(P.SLIDE_H);
       this.fx.dust(this.cx, this.footY, -Math.sign(this.vx) * 60, 8);
       sfx.slide();
@@ -696,7 +737,9 @@ export class Player {
     if (this.wallDir !== 0) {
       this.lastWallDir = this.wallDir;
       this.t.wallCoyote = P.WALL_COYOTE;
-      if (this.t.refill <= 0) this.dashes = this.maxDashes;
+      // No dash back from a wall: only the ground (and a crystal or a spring,
+      // which exist to hand one back) refills it. A wall that refilled made
+      // every shaft a free dash per kick, and every crystal chain optional.
       if (this.vy > 40 && Math.random() < 0.3)
         this.fx.dust(this.x + (this.wallDir > 0 ? this.w : 0), this.cy + 4, -this.wallDir * 20, 1, '#8f86c9');
     }
@@ -712,8 +755,40 @@ export class Player {
       this.t.rollFree = 0;
     } else if (this.fallFrom !== null) {
       this.#ledgeCost(this.footY - this.fallFrom);
+    } else {
+      this.#landCost(this.footY - (this.airPeak ?? this.footY));
     }
     this.fallFrom = null;
+  }
+
+  /** Coming down hard from a high jump: an ordinary jump on the flat costs
+   *  nothing, a long way down eats a share of the run. It is booked the same
+   *  way as a scuffed ledge, so a roll (C pressed just before or after the
+   *  landing, or held) hands it all back: roll the big ones and keep it. */
+  #landCost(drop) {
+    if (this.vault || this.dashing || this.bursting) return;
+    const f = clamp((drop - P.LAND_FREE) / (P.LAND_FULL - P.LAND_FREE), 0, 1);
+    if (f <= 0) return;
+    // C already down (or just pressed) as you touch: roll straight out of it,
+    // keeping every bit of the run. Pressed a moment late, the refund below
+    // still hands it back; not at all, and the landing takes its share.
+    if (this.holdingVault || this.t.vaultBuf > 0) {
+      this.t.vaultBuf = 0;
+      this.rolling = P.ROLL_TIME;
+      this.vaults++;
+      this.fx.dust(this.cx, this.footY, -Math.sign(this.vx) * 40, 6, '#ffe6a8');
+      sfx.vault();
+      return;
+    }
+    const loss = Math.abs(this.vx) * P.LAND_LOSS * f;
+    if (loss < 8) return;
+    this.lostSpeed = loss;
+    this.lostFlow = this.flow * 0.3 * f;
+    this.vx -= Math.sign(this.vx) * loss;
+    this.flow -= this.lostFlow;
+    this.t.refund = P.ROLL_REFUND;
+    this.fx.dust(this.cx, this.footY, -Math.sign(this.vx) * 20, 4 + Math.round(f * 5), '#8f86c9');
+    this.fx.shake(1 + f * 2);
   }
 
   /** Dropping off a ledge on your feet is clumsy: it costs speed, and the more
@@ -864,7 +939,15 @@ export class Player {
     // and flow of the last moment, not whatever the lip left you with. The rise
     // is scripted; the legs are not, so you take it at a run.
     const speed = Math.max(Math.abs(this.vx), this.recentSpeed, P.VAULT_EXIT);
-    const dur = clamp(c.rise / P.VAULT_RISE_RATE, P.VAULT_MIN_TIME, P.VAULT_MAX_TIME);
+    // The climb has to be over by the time the stride reaches the face (the
+    // rise is done at 80% of the vault, see #vaultStep). At a sprint it always
+    // was; at burst speed a climb of the usual length was still going when you
+    // got there, so you slid up through the corner of the rock and then met
+    // the next step while still mid-vault, which stopped you dead. A fast
+    // vault is simply a quick one.
+    const reachFace = this.#gapAhead(c.dir) / speed;
+    const dur = Math.min(clamp(c.rise / P.VAULT_RISE_RATE, P.VAULT_MIN_TIME, P.VAULT_MAX_TIME),
+                         Math.max(reachFace / 0.8, P.VAULT_SNAP));
     this.vx = c.dir * speed;
     this.vault = {
       kind: 'up', dir: c.dir, t: 0, dur,
@@ -878,6 +961,32 @@ export class Player {
     this.anim = { name: 'vault', t: 0, frame: 0 };
     this.fx.dust(this.cx + c.dir * 4, this.footY, -c.dir * 30, 5, '#ffe6a8');
     sfx.ledge();
+  }
+
+  /** Does the ground ahead carry on as a ramp, rather than ending in a drop?
+   *  Probed from the leading edge to a little past where the edge scanner saw
+   *  the ground fall away (`gap`, which grows with speed), never deeper than a 45-degree
+   *  slope could fall over that distance, so a slope at the foot of a real
+   *  ledge does not count. The feet ride the highest point of a slope under
+   *  the box, which on the way down is its trailing edge, so the slope at the
+   *  leading edge already sits up to a box-width lower: that is allowed for. */
+  #rampAhead(dir, gap = 0) {
+    const edge = dir > 0 ? this.x + this.w : this.x;
+    for (let d = 0; d <= gap + 24; d += 3) {
+      const px = edge + dir * d;
+      const deepest = this.footY + this.w + d + 4;
+      if (this.level.floorUnder(px - 1, px + 1, this.footY - 1, deepest, { slopesOnly: true }) !== null)
+        return true;
+    }
+    return false;
+  }
+
+  /** How far the box can move along `dir` at its current height before it
+   *  touches rock, up to a limit well past any vault's reach. */
+  #gapAhead(dir) {
+    let d = 0;
+    while (d < 120 && !this.level.boxHitsWall(this.x + dir * (d + 1), this.y, this.w, this.h)) d++;
+    return d;
   }
 
   /** Book-keeping shared by both ledge calls. */
@@ -902,7 +1011,11 @@ export class Player {
     this.vx = c.dir * speed;
     this.rolling = P.ROLL_TIME;
     this.t.rollFree = P.ROLL_FREE;
-    this.t.noSnap = 0.2;                       // let the drop actually happen
+    // Off a real edge the snap has to let go, or the drop never happens. Down
+    // a ramp it must not: the slope falls away as fast as the edge scanner can
+    // see, so it offers a roll there too, and switching the snap off launched
+    // you clean off the ramp in a long hop instead of tumbling down it.
+    this.t.noSnap = this.#rampAhead(c.dir, c.dist) ? 0 : 0.2;
     this.sliding = false;
     this.crouching = false;
     this.#tryStand();
@@ -921,11 +1034,15 @@ export class Player {
     // move is tested at the height we are climbing TO and taken in small bites:
     // the lip itself never blocks us, anything standing above it does, and no
     // amount of speed can carry the box through solid rock.
+    // The box is also tested where it actually is: until the climb has lifted
+    // it clear, the face of the lip holds it back instead of letting it slide
+    // through the corner. (A vault sized to its speed never waits there long.)
     let togo = Math.max(Math.abs(this.vx), v.cross) * dt;
     while (togo > 0.001) {
       const bite = Math.min(3, togo);
       const nx = this.x + v.dir * bite;
       if (L.boxHitsWall(nx, v.y1, this.w, this.h)) { v.blocked = true; break; }
+      if (L.boxHitsWall(nx, this.y, this.w, this.h)) break;
       this.x = nx;
       togo -= bite;
     }
@@ -980,7 +1097,7 @@ export class Player {
 
   // -------------------------------------------------------------- bursting
   //
-  // A full flow bar is worth one burst: you go roughly three times a sprint,
+  // A full flow bar is worth one burst: you go well past a sprint,
   // and the world (the clock included) drops to BURST_SCALE so there is still
   // time to read a ledge and call it. The bar is the fuel gauge.
 
@@ -1048,9 +1165,9 @@ export class Player {
     if (this.bursting) return;       // the burst owns the meter while it runs
     const sp = Math.abs(this.vx);
     const moving = ix !== 0 && Math.sign(ix) === Math.sign(this.vx);
-    if (sp > 150 && (moving || this.sliding || !this.grounded)) this.flow += dt * 0.42;
-    else if (sp < 70) this.flow -= dt * 1.1;
-    else this.flow -= dt * 0.2;
+    if (sp > 150 && (moving || this.sliding || !this.grounded)) this.flow += dt * P.FLOW_GAIN;
+    else if (sp < 70) this.flow -= dt * P.FLOW_STALL;
+    else this.flow -= dt * P.FLOW_DRAIN;
     this.flow = clamp(this.flow, 0, P.FLOW_MAX);
   }
 
@@ -1154,6 +1271,23 @@ export class Player {
     this.fx.burst(this.cx, this.footY, 14, '#ffe6a8');
     this.fx.shake(3);
     sfx.spring();
+  }
+
+  /** A boost pad underfoot: raises you to `speed` in its direction and never
+   *  trims a run already going its way faster. Meet it backwards and it turns
+   *  you round, as a pad pointing somewhere should. `fresh` is the first frame
+   *  on it, for the fanfare. */
+  boost(dir, speed, flow, fresh) {
+    if (Math.sign(this.vx) !== dir || Math.abs(this.vx) < speed) this.vx = dir * speed;
+    // A pad charges the bar to at least a full one as well: with an empty bar
+    // (just respawned, say) the pad's speed would bleed straight back down to
+    // a jog, and whatever comes after a pad is built for the speed it gives.
+    this.flow = Math.max(this.flow, 1);
+    if (!fresh) return;
+    this.flow = Math.min(P.FLOW_MAX, this.flow + flow);
+    this.fx.burst(this.cx, this.footY, 10, '#7dffc4');
+    this.fx.shake(2);
+    sfx.boost();
   }
 
   refillDash() {

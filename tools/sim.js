@@ -3,9 +3,14 @@
 // (or `node tools/sim.js` where node is available)
 
 import { buildTestArea } from '../src/levels/test-area.js';
-import { Level, TILE } from '../src/level.js';
+import { Level, T, TILE } from '../src/level.js';
 import { Player, P } from '../src/player.js';
 import { Fx } from '../src/particles.js';
+import { updateMechanics, resetMechanics, phaseState, M } from '../src/mechanics.js';
+import { buildSpire } from '../src/levels/spire.js';
+import { buildUndercroft } from '../src/levels/undercroft.js';
+import { buildSkyline } from '../src/levels/skyline.js';
+import { LEVELS, medalTimes } from '../src/levels/index.js';
 
 const STEP = 1 / 120;
 
@@ -35,6 +40,7 @@ export function makeSim(at = { x: 6, y: 26 }, custom = null) {
     for (let i = 0; i < steps; i++) {
       keys.set(typeof held === 'function' ? held(i) : held);
       p.update(STEP, keys);
+      updateMechanics(level, p, STEP);
       keys.step();
       fx.update(STEP);
       if (onStep) onStep(i, p);
@@ -50,6 +56,9 @@ function check(name, ok, detail = '') {
   print(`${ok ? 'ok  ' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
 }
 const embedded = (level, p) => level.boxHitsWall(p.x, p.y, p.w, p.h);
+// Springs live in mechanics.js and so fire in these sims too. The checks set
+// up around section G's floors are not about springs, so they run without them.
+const springless = () => { const L = buildTestArea(); L.springs.length = 0; return L; };
 
 // 1. a ledge in front raises a cue, and JUMP takes it
 {
@@ -336,13 +345,34 @@ const WIND = Math.ceil(P.BURST_WIND * 120);   // steps from the press to the lau
     `wind ${(sim.p.burstWind * 1000).toFixed(0)}ms`);
   sim.run(2, ['right']);
   check('a full bar bursts', sim.p.bursting, `flow ${sim.p.flow.toFixed(2)}`);
-  check('and it is unbelievably fast', Math.abs(sim.p.vx) > sprint * 2.5,
+  check('and it is well past a sprint', Math.abs(sim.p.vx) > sprint * 1.5,
     `${sprint.toFixed(0)} -> ${Math.abs(sim.p.vx).toFixed(0)} px/s`);
+
+  // a dash is the one thing that outruns a burst, and only inside one
+  // (on open ground of its own: at 1000 px/s the test area runs out fast)
+  let burstDash = 0, plainDash = 0;
+  const open = makeSim({ x: 6, y: 19 }, new Level(200, 30).rect(0, 20, 200, 10));
+  open.p.flow = 1;
+  open.run(80, ['right']);
+  open.run(1, ['right', 'burst']);
+  open.run(WIND, ['right']);
+  open.run(1, ['right', 'dash']);
+  open.run(Math.ceil(P.DASH_TIME * 120) + 4, ['right'], (i, pl) => { if (pl.dashing) burstDash = Math.max(burstDash, Math.abs(pl.vx)); });
+  const calm = makeSim({ x: 151, y: 26 });
+  calm.run(30, ['right']);
+  calm.run(1, ['right', 'dash']);
+  calm.run(8, ['right'], (i, pl) => { if (pl.dashing) plainDash = Math.max(plainDash, Math.abs(pl.vx)); });
+  check('a dash inside a burst outruns the burst', burstDash === P.BURST_DASH && P.BURST_DASH > P.BURST_SPEED,
+    `${burstDash.toFixed(0)} px/s against a burst of ${P.BURST_SPEED}`);
+  check('but a dash outside one is the same dash it always was', plainDash === P.DASH_SPEED,
+    `${plainDash.toFixed(0)} px/s`);
+  check('and the burst carries on after it', open.p.bursting && Math.abs(open.p.vx) === P.BURST_SPEED,
+    `bursting=${open.p.bursting} at ${Math.abs(open.p.vx).toFixed(0)} px/s`);
 
   // the bar is the fuel gauge: it drains at a known rate and ends the burst at 0
   // (measured over a short window — no stretch of this level is long enough to
   //  run a whole burst out without hitting something, which is rather the point)
-  const fuel = makeSim({ x: 230, y: 33 });
+  const fuel = makeSim({ x: 230, y: 33 }, springless());
   fuel.p.flow = 1;
   fuel.run(60, ['right']);
   fuel.p.flow = 1;
@@ -351,9 +381,9 @@ const WIND = Math.ceil(P.BURST_WIND * 120);   // steps from the press to the lau
   const at0 = fuel.p.flow;
   fuel.run(30, ['right']);
   const drained = (at0 - fuel.p.flow) / 0.25;
-  check('the bar drains while bursting', fuel.p.bursting && Math.abs(drained - 0.3) < 0.08,
+  check('the bar drains while bursting', fuel.p.bursting && Math.abs(drained - P.BURST_DRAIN) < 0.08,
     `${drained.toFixed(2)} bar/s — a full bar is ${(1 / drained).toFixed(1)}s of burst`);
-  fuel.p.flow = 0.004;
+  fuel.p.flow = 0.002;
   fuel.run(2, ['right']);
   // (the meter starts refilling the moment the burst lets go of it, so "empty"
   //  means "near zero", not "exactly zero")
@@ -406,7 +436,7 @@ const WIND = Math.ceil(P.BURST_WIND * 120);   // steps from the press to the lau
   late.run(60, ['right']);
   late.p.vx = 40;
   late.run(1, ['right', 'burst']);
-  late.run(WIND, ['right']);           // (no further: any more and 980px/s is in the pit)
+  late.run(WIND, ['right']);           // (no further: any more and burst speed is in the pit)
   check('a late press still spends it', late.p.bursting,
     `vx=${late.p.vx.toFixed(0)} from a standstill-ish 40`);
 
@@ -453,7 +483,7 @@ const WIND = Math.ceil(P.BURST_WIND * 120);   // steps from the press to the lau
 // 21. airtime is charged on top of the drop height: taking a real fall on your
 //     feet strips most of the run, and a late roll still hands it all back.
 function feetFirst(mode) {
-  const sim = makeSim({ x: 243, y: 27.1 });    // the low spring platform, 7 tiles up
+  const sim = makeSim({ x: 243, y: 27.1 }, springless());    // the low spring platform, 7 tiles up
   sim.run(12);                                 // settle
   sim.p.vx = 300;
   sim.p.flow = 0.6;
@@ -489,7 +519,7 @@ function feetFirst(mode) {
 // 22. the dash has a floor under it: touching the ground does not hand it back
 //     early, and mashing the key cannot beat the gap
 {
-  const sim = makeSim({ x: 232, y: 34.1 });     // flat lower floor, nothing in the way
+  const sim = makeSim({ x: 232, y: 34.1 }, springless());     // flat lower floor, nothing in the way
   sim.run(30, ['right']);
   const marks = [];
   let was = false;
@@ -503,7 +533,7 @@ function feetFirst(mode) {
   check('and a grounded dash never refills itself mid-dash', marks.length >= 3 && marks[1].t - marks[0].t < 0.2,
     `${marks.length} dash edges in 1.25s of mashing`);
 
-  const buf = makeSim({ x: 232, y: 34.1 });     // a press just before it is up still lands
+  const buf = makeSim({ x: 232, y: 34.1 }, springless());     // a press just before it is up still lands
   buf.run(30);
   buf.run(1, ['dash']);
   buf.run(Math.round((P.DASH_TIME + P.DASH_GAP - P.DASH_BUFFER * 0.6) * 120));
@@ -512,7 +542,7 @@ function feetFirst(mode) {
   buf.run(20, [], (i, pl) => { if (pl.dashing) fired = true; });
   check('an early press is held until the gap is up', fired);
 
-  const crys = makeSim({ x: 232, y: 34.1 });    // a crystal is the one instant refill
+  const crys = makeSim({ x: 232, y: 34.1 }, springless());    // a crystal is the one instant refill
   crys.run(30);
   crys.run(1, ['dash']);
   crys.run(Math.round(P.DASH_TIME * 120) + 2);
@@ -523,7 +553,7 @@ function feetFirst(mode) {
 }
 
 // 23. a burst and a slide are not mutually exclusive: ducking inside a burst
-//     keeps both, which is the only way to take the low rock at 980 px/s
+//     keeps both, which is the only way to take the low rock at burst speed
 {
   const sim = makeSim({ x: 198, y: 26 });       // the flat run-in to the tunnel
   sim.p.flow = 1;
@@ -546,11 +576,11 @@ function feetFirst(mode) {
       if (embedded(sim.level, pl)) embeddedIn++;
     }
   });
-  check('the low rock can be taken at burst speed', minH <= P.SLIDE_H && peak > 900 && !embeddedIn,
+  check('the low rock can be taken at burst speed', minH <= P.SLIDE_H && peak > P.BURST_SPEED - 50 && !embeddedIn,
     `h=${minH} peak=${peak.toFixed(0)} px/s, ${embeddedIn} embedded frames`);
   check('and it comes out the far side', sim.p.cx / TILE > 224, `tile ${(sim.p.cx / TILE).toFixed(0)}`);
 
-  const out = makeSim({ x: 232, y: 34.1 });     // the other order: slide, then cash it
+  const out = makeSim({ x: 232, y: 34.1 }, springless());     // the other order: slide, then cash it
   out.p.flow = 1;
   out.run(60, ['right']);
   out.run(10, ['right', 'down']);
@@ -584,26 +614,31 @@ function feetFirst(mode) {
 
   // head-on, no vault in it at all
   const head = burstAt(ground().rect(40, 12, 2, 8));
+  const fuelIn = head.p.flow;
   let hitAt = 0;
   head.run(120, ['right'], (i, pl) => { if (!hitAt && pl.t.bump > 0) hitAt = i; });
   check('a burst run straight into a wall survives it', hitAt > 0 && head.p.bursting,
     `hit at step ${hitAt}, flow ${head.p.flow.toFixed(2)}`);
-  check('and the wall does not take the fuel either', head.p.flow > 0.6,
-    `flow ${head.p.flow.toFixed(2)}`);
+  // (a second of burning is all that should have gone; a wall's cut would be far more)
+  check('and the wall does not take the fuel either',
+    Math.abs(head.p.flow - (fuelIn - P.BURST_DRAIN)) < 0.05,
+    `flow ${fuelIn.toFixed(2)} -> ${head.p.flow.toFixed(2)}`);
 
   // the same wall met halfway up a vault, which is a climb you cannot steer
   const dead = burstAt(pocket(8));              // too tall to jump: a real dead end
-  let pinned = 0, flowIn = 0;
+  let pinned = 0, flowIn = 0, burstIn = false;
   dead.run(200, () => (dead.p.cue ? ['right', 'vault'] : ['right']), (i, pl) => {
-    if (!pinned && pl.vaults > 0 && pl.t.bump > 0) { pinned = i; flowIn = pl.flow; }
+    if (!pinned && pl.vaults > 0 && pl.t.bump > 0) { pinned = i; flowIn = pl.flow; burstIn = pl.bursting; }
   });
   check('a vault into a wall keeps the burst, fuel and all',
-    pinned > 0 && dead.p.bursting && flowIn > 0.6, `flow ${flowIn.toFixed(2)} on contact`);
-  dead.run(400, ['right']);
+    pinned > 0 && burstIn && flowIn > 0.6, `flow ${flowIn.toFixed(2)} on contact`);
+  dead.run(Math.ceil(120 / P.BURST_DRAIN), ['right']);   // a whole bar's worth
   check('it is the bar, not the wall, that finally ends it',
     !dead.p.bursting && dead.p.flow < 0.02, `flow ${dead.p.flow.toFixed(2)}`);
 
-  // ... and a wall you can get over hands the whole burst back
+  // ... and a wall you can get over hands the whole burst back. (At burst speed
+  //  the vault usually chains straight over a wall this short; if it pins you
+  //  instead, the jump has to get you out. Either way you come out bursting.)
   const out = burstAt(pocket(2));
   let jumpAt = 0, cleared = null;
   out.run(300, (i) => {
@@ -613,16 +648,31 @@ function feetFirst(mode) {
     if (jumpAt && i >= jumpAt + 2 && i <= jumpAt + 4) k.push('jump');
     return k;
   }, (i, pl) => {
-    if (!cleared && jumpAt && pl.cx / TILE > 46) cleared = { on: pl.bursting, vx: Math.abs(pl.vx) };
+    if (!cleared && pl.cx / TILE > 46) cleared = { on: pl.bursting, vx: Math.abs(pl.vx) };
   });
-  check('jumping out of the pocket picks the speed straight back up',
-    jumpAt > 0 && cleared && cleared.on && cleared.vx > 900,
+  check('getting out of the pocket picks the speed straight back up',
+    cleared && cleared.on && cleared.vx > P.BURST_SPEED - 50,
     cleared ? `bursting=${cleared.on} at ${cleared.vx.toFixed(0)} px/s past the wall`
             : `never cleared the wall (pinned at step ${jumpAt})`);
+
+  // ... but a wall is not a ladder. The burst pins you against it every step,
+  // so a wall jump that kept the burst put you straight back on the wall for
+  // another: mashing jump climbed forever, and each kick's flow kept it fuelled.
+  const climb = burstAt(ground().rect(40, 0, 2, 20));
+  const floorY = climb.p.footY;
+  let peakY = floorY, kicked = false;
+  climb.run(400, (i) => (i % 12 < 2 ? ['right', 'jump'] : ['right']), (i, pl) => {
+    peakY = Math.min(peakY, pl.footY);
+    if (pl.t.wallLock > 0) kicked = true;
+  });
+  check('a wall jump spends the burst, so a wall cannot be climbed on one',
+    kicked && !climb.p.bursting && (floorY - peakY) / TILE < 5,
+    `rose ${((floorY - peakY) / TILE).toFixed(1)} tiles, bursting=${climb.p.bursting}`);
 }
 
-// 25. the bar holds more than running spends: the overfill is burst fuel, and a
-//     burst cashed off a topped-up bar runs proportionally longer. (On a flat
+// 25. the bar holds more than one bar: the overfill is a top gear on the run
+//     and burst fuel at once, and a burst cashed off a topped-up bar runs
+//     proportionally longer. (On a flat
 //     plain of its own — no stretch of the test area is long enough to run a
 //     full tank out without meeting something.)
 {
@@ -633,10 +683,10 @@ function feetFirst(mode) {
   check('flow fills past a bar on running alone', sim.p.flow > 1,
     `flow ${sim.p.flow.toFixed(2)} of ${P.FLOW_MAX}`);
   check('and stops at the cap', sim.p.flow <= P.FLOW_MAX + 1e-6, `flow ${sim.p.flow.toFixed(2)}`);
-  check('but the run itself still tops out at one bar',
-    Math.abs(sim.p.topSpeed - (P.RUN_BASE + P.RUN_FLOW)) < 0.001 &&
-    Math.abs(sim.p.vx) < P.RUN_BASE + P.RUN_FLOW + 10,
-    `top ${Math.round(sim.p.topSpeed)} px/s at ${Math.abs(sim.p.vx).toFixed(0)}`);
+  const gear = P.RUN_BASE + P.RUN_FLOW + P.RUN_OVER;
+  check('and holding top speed tops the run up past a sprint, into top gear',
+    Math.abs(sim.p.topSpeed - gear) < 0.001 && Math.abs(sim.p.vx) > gear - 10 && Math.abs(sim.p.vx) < gear + 10,
+    `top ${Math.round(sim.p.topSpeed)} px/s at ${Math.abs(sim.p.vx).toFixed(0)} (a bar alone is ${P.RUN_BASE + P.RUN_FLOW})`);
 
   // a full tank is FLOW_MAX / BURST_DRAIN of burst
   const burn = (flow) => {
@@ -652,8 +702,437 @@ function feetFirst(mode) {
   const full = burn(P.FLOW_MAX);
   const bar = burn(1);
   check('a topped-up bar is a longer burst',
-    Math.abs(full - P.FLOW_MAX / P.BURST_DRAIN) < 0.2 && full > bar + 1.5,
+    Math.abs(full - P.FLOW_MAX / P.BURST_DRAIN) < 0.2 && full > bar * 1.4,
     `${full.toFixed(2)}s on a full tank vs ${bar.toFixed(2)}s on one bar`);
+}
+
+// 25b. your dash only comes back on the ground (or from a crystal or a
+//      spring): sliding down a wall no longer hands it back
+{
+  const shaft = new Level(40, 40).rect(0, 30, 40, 10).rect(20, 0, 2, 30);
+  const sim = makeSim({ x: 14, y: 20 }, shaft);         // in the air beside a wall
+  sim.run(1, ['right', 'dash']);
+  let onWall = 0, back = false;
+  sim.run(200, ['right'], (i, pl) => {
+    if (pl.wallDir !== 0) onWall++;
+    if (!pl.grounded && pl.dashes > 0) back = true;
+  });
+  check('a wall does not hand your dash back', onWall > 10 && !back, `${onWall} steps on the wall, dash back in the air: ${back}`);
+  check('but the ground does', sim.p.grounded && sim.p.dashes === sim.p.maxDashes);
+}
+
+// 25c. momentum: a long fall from a jump costs speed on landing unless you
+//      roll out of it, and jumps grow with speed faster than speed does
+{
+  // off a tall step: run, jump at the lip, and come down nine tiles lower
+  const drop = () => new Level(200, 50).rect(0, 20, 30, 30).rect(30, 29, 170, 21);
+  const land = (roll) => {
+    const sim = makeSim({ x: 10, y: 19 }, drop());
+    sim.p.flow = 1;
+    let jumped = false, landed = -1, before = 0, low = Infinity, flow = 0;
+    sim.run(420, (i) => {
+      const k = ['right'];
+      if (!jumped && sim.p.cx / TILE > 29) jumped = true;
+      if (jumped && landed < 0 && (sim.p.grounded || sim.p.vy < 0)) k.push('jump');   // a full jump
+      // the roll: C held into the landing and through the moment after it
+      if (roll && ((!sim.p.grounded && sim.p.vy > 300) || sim.p.t.refund > 0)) k.push('vault');
+      return k;
+    }, (i, pl) => {
+      if (jumped && landed < 0 && !pl.grounded) before = Math.abs(pl.vx);
+      if (jumped && landed < 0 && pl.grounded && pl.cx / TILE > 31) landed = i;
+      if (landed >= 0 && i <= landed + 3) low = Math.min(low, Math.abs(pl.vx));
+      if (landed >= 0 && i === landed + 30) flow = pl.flow;
+    });
+    return { before, low, flow };
+  };
+  // (held right wins raw speed back in a moment either way; what lasts is the
+  //  bar, and with it top gear)
+  const feet = land(false), rolled = land(true);
+  check('a long fall from a jump costs speed and flow landed on your feet', feet.low < feet.before * 0.75,
+    `${feet.before.toFixed(0)} -> ${feet.low.toFixed(0)} px/s on touchdown, bar ${feet.flow.toFixed(2)} after`);
+  check('and rolling out of it keeps them', rolled.low > rolled.before * 0.95 && rolled.flow > feet.flow + 0.2,
+    `${rolled.before.toFixed(0)} -> ${rolled.low.toFixed(0)} px/s rolled, bar ${rolled.flow.toFixed(2)} (on your feet ${feet.flow.toFixed(2)})`);
+
+  const leap = (vx, flow) => {
+    const sim = makeSim({ x: 10, y: 19 }, new Level(400, 30).rect(0, 20, 400, 10));
+    sim.run(5, []);
+    sim.p.vx = vx; sim.p.flow = flow;
+    const x0 = sim.p.x;
+    let land = 0;
+    sim.run(300, (i) => (i === 0 ? ['right', 'jump'] : ['right', 'jump']), (i, pl) => { pl.flow = flow; if (!land && i > 3 && pl.grounded) land = pl.x; });
+    return (land - x0) / TILE;
+  };
+  const slow = leap(190, 0), fast = leap(410, 1.6);
+  check('a jump at top gear carries much further than its speed alone would', fast / slow > (410 / 190) * 1.05,
+    `${slow.toFixed(1)} tiles at 190 px/s, ${fast.toFixed(1)} at 410 (speed ratio ${(410 / 190).toFixed(2)}, distance ratio ${(fast / slow).toFixed(2)})`);
+}
+
+// 26. crumbling blocks: stand on one and it goes from under you a beat later;
+//     it grows back on its own, but never into the player
+{
+  const lvl = new Level(40, 30).rect(0, 20, 40, 10).rect(10, 20, 6, 10, T.EMPTY).crumble(12, 16, 2);
+  const sim = makeSim({ x: 12.2, y: 14 }, lvl);
+  let landedAt = -1, goneAt = -1;
+  sim.run(200, [], (i, pl) => {
+    if (landedAt < 0 && pl.grounded) landedAt = i;
+    if (goneAt < 0 && sim.level.get(12, 16) === T.EMPTY) goneAt = i;
+  });
+  const beat = (goneAt - landedAt) / 120;
+  check('a crumbling block gives way a beat after you land on it',
+    landedAt >= 0 && Math.abs(beat - M.CRUMBLE_DELAY) < 0.03 && sim.p.footY > 17 * TILE,
+    `gone ${beat.toFixed(2)}s after landing, foot at row ${(sim.p.footY / TILE).toFixed(1)}`);
+
+  // grows back after CRUMBLE_BACK ... unless you are standing in its cell
+  const c = sim.level.crumbles[0];
+  sim.p.reset(12 * TILE + 3, 16 * TILE + 1);       // inside the empty cell
+  sim.p.vy = 0;
+  const p = sim.p;
+  for (let i = 0; i < 400; i++) { p.x = 12 * TILE + 3; p.y = 16 * TILE + 1; p.vy = 0; updateMechanics(sim.level, p, 1 / 120); }
+  check('and never grows back into the player', c.state === 'gone' && sim.level.get(12, 16) === T.EMPTY, c.state);
+  p.x = 30 * TILE;
+  updateMechanics(sim.level, p, 1 / 120);
+  check('it grows back once you are clear', c.state === 'idle' && sim.level.get(12, 16) === T.CRUMBLE, c.state);
+
+  sim.level.crumbles[1].state = 'gone'; sim.level.set(13, 16, T.EMPTY);
+  resetMechanics(sim.level);
+  check('a respawn puts every crumbled block back', sim.level.get(13, 16) === T.CRUMBLE);
+}
+
+// 27. phase blocks: the two sets swap every PHASE_HALF, and a block whose turn
+//     comes round while you stand in its cell waits for you to leave
+{
+  const lvl = new Level(40, 30).rect(0, 20, 40, 10).phase(10, 16, 2, 1, 0).phase(20, 16, 2, 1, 1);
+  const sim = makeSim({ x: 30, y: 19 }, lvl);
+  const solid = () => [sim.level.get(10, 16) === T.PHASE, sim.level.get(20, 16) === T.PHASE];
+  const before = solid();
+  sim.run(Math.ceil(M.PHASE_HALF * 120) + 1, []);
+  const after = solid();
+  check('phase blocks take turns', before[0] && !before[1] && !after[0] && after[1],
+    `before ${before} after ${after} (active ${phaseState(sim.level).active})`);
+
+  // park the player inside one of set 0's cells (the box fits inside column
+  // 10, so its neighbour in column 11 is free to come back on time)
+  const p = sim.p;
+  for (let i = 0; i < Math.ceil(M.PHASE_HALF * 120) + 4; i++) {
+    p.x = 10 * TILE + 3; p.y = 16 * TILE + 1;
+    updateMechanics(sim.level, p, 1 / 120);
+  }
+  check('a phase block never appears around the player',
+    phaseState(sim.level).active === 0 && sim.level.get(10, 16) === T.EMPTY && sim.level.get(11, 16) === T.PHASE);
+  p.x = 30 * TILE;
+  updateMechanics(sim.level, p, 1 / 120);
+  check('it appears as soon as you are out of it', sim.level.get(10, 16) === T.PHASE);
+}
+
+// 28. boost pads raise you to BOOST_SPEED in their direction, never slow a
+//     faster run down, and fire their own way whichever way you meet them
+{
+  const lvl = () => new Level(80, 30).rect(0, 20, 80, 10).boost(20, 20, 3, +1);
+  const slow = makeSim({ x: 14, y: 19 }, lvl());
+  let peak = 0;
+  slow.run(80, ['right'], (i, pl) => { peak = Math.max(peak, pl.vx); });
+  check('a boost pad throws you forward', Math.abs(peak - M.BOOST_SPEED) < 1, `peak ${peak.toFixed(0)} px/s`);
+
+  const fast = makeSim({ x: 14, y: 19 }, lvl());
+  fast.run(2, []);
+  let low = Infinity;
+  fast.run(40, ['right'], (i, pl) => { if (i === 0) pl.vx = 700; if (pl.cx / TILE > 20 && pl.cx / TILE < 23) low = Math.min(low, pl.vx); });
+  check('but never slows a faster run', low > M.BOOST_SPEED, `${low.toFixed(0)} px/s over the pad`);
+
+  // a dash off a pad keeps the pad's speed: it used to hand off at DASH_END
+  // and so dashing off a boost slowed you down
+  const off = makeSim({ x: 14, y: 19 }, lvl());
+  let left = 0, dashed = false;
+  off.run(150, (i) => (off.p.cx / TILE > 23.5 && off.p.cx / TILE < 25 && !dashed && i % 2 ? ['right', 'dash'] : ['right']),
+    (i, pl) => { if (pl.dashing) dashed = true; if (pl.cx / TILE > 32 && !left) left = Math.abs(pl.vx); });
+  check('a dash off a boost pad hands back the pad\'s speed, not less', dashed && left > P.DASH_END + 100,
+    `${left.toFixed(0)} px/s after the dash (hand-off floor ${P.DASH_END})`);
+
+  const back = makeSim({ x: 26, y: 19 }, lvl());
+  let thrown = 0;
+  back.run(60, ['left'], (i, pl) => { thrown = Math.max(thrown, pl.vx); });
+  check('and fires its own way even when you run onto it backwards', Math.abs(thrown - M.BOOST_SPEED) < 1,
+    `thrown back at ${thrown.toFixed(0)} px/s`);
+}
+
+// 29. every level hangs together (flags on rock, spawn in the open, a goal),
+//     and the spire's boost pit cannot be cleared without the pad in front of it
+{
+  for (const lv of LEVELS) {
+    const L = lv.build();
+    const flagsOk = L.checkpoints.every((c) => L.blocking(Math.floor(c.x / TILE), c.y / TILE) &&
+                                                !L.blocking(Math.floor(c.x / TILE), c.y / TILE - 1));
+    const spawnOk = !L.boxHitsWall(L.spawn.x, L.spawn.y, P.W, P.H);
+    const m = lv.par ? medalTimes(lv).map((t) => t.time) : [];
+    check(`${lv.name}: has a par time, and gold beats silver beats bronze beats it`,
+      m.length === 3 && m[0] < m[1] && m[1] < m[2] && m[2] < lv.par, `par ${lv.par}, medals ${m.join(' / ')}`);
+    check(`${lv.name}: every flag stands on rock with room above it, the spawn is in open air, there is a goal`,
+      flagsOk && spawnOk && !!L.goal, `flags ${flagsOk}, spawn ${spawnOk}, goal ${!!L.goal}`);
+  }
+
+  const leap = (fromTile, padOn) => {
+    const lvl = buildSpire();
+    if (!padOn) lvl.boosts.length = 0;
+    const sim = makeSim({ x: fromTile, y: 33 }, lvl);
+    sim.p.flow = 1;
+    sim.run(200, (i) => (sim.p.cx / TILE > 106.6 && sim.p.cx / TILE < 114 ? ['right', 'jump'] : ['right']),
+      (i, pl) => { if (i < 3) pl.vx = 330; pl.flow = Math.min(pl.flow, 1); });   // a sprint, no top gear
+    return !sim.p.dead && sim.p.cx / TILE > 123;
+  };
+  // (top gear carries it without the pad, and that is the point of top gear)
+  check('the boost pit is a pad jump: a plain sprint alone falls short', leap(97, true) && !leap(97, false),
+    `with pad ${leap(97, true)}, without ${leap(97, false)}`);
+}
+
+// 30. a vault at speed is a quick vault: the climb is over before the stride
+//     reaches the face, so it never slides up through the corner of the rock,
+//     and a burst up a staircase never meets the next step mid-vault and stalls
+{
+  const climb = (burst) => {
+    const sim = makeSim({ x: 36, y: 29 });        // the run-in to the five steps up
+    sim.p.flow = 1;
+    sim.run(30, ['right']);
+    if (burst) { sim.run(1, ['right', 'burst']); sim.run(WIND, ['right']); }
+    let fresh = false, clip = 0, slowest = Infinity, vaults = null;
+    sim.run(300, () => {
+      const k = ['right'];
+      if (sim.p.cue && !fresh) k.push('vault');    // one tap per prompt, like a player
+      fresh = !!sim.p.cue;
+      return k;
+    }, (i, pl) => {
+      const x = pl.cx / TILE;
+      if (x > 59 && vaults === null) vaults = pl.vaults;     // the five steps up, not the rolls after
+      if (x < 44 || x > 59) return;
+      slowest = Math.min(slowest, Math.abs(pl.vx));
+      if (pl.vault && embedded(sim.level, pl)) clip++;
+    });
+    return { vaults, clip, slowest };
+  };
+  const b = climb(true);
+  check('a burst runs the staircase without stalling on a step', b.vaults === 5 && b.slowest >= P.BURST_SPEED - 30,
+    `${b.vaults} vaults, slowest ${b.slowest.toFixed(0)} px/s`);
+  check('and never climbs through the rock it is vaulting', b.clip === 0, `${b.clip} steps inside rock`);
+  const r = climb(false);
+  check('nor does a sprint', r.vaults === 5 && r.clip === 0, `${r.vaults} vaults, ${r.clip} steps inside rock`);
+
+  // the tallest lip there is, at a sprint: this one used to clip at any speed
+  const tall = makeSim({ x: 6, y: 19 }, new Level(80, 30).rect(0, 20, 80, 10).rect(30, 18, 40, 2));
+  tall.p.flow = 1;
+  let inside = 0, fresh = false;
+  tall.run(200, () => { const k = ['right']; if (tall.p.cue && !fresh) k.push('vault'); fresh = !!tall.p.cue; return k; },
+    (i, pl) => { if (pl.vault && embedded(tall.level, pl)) inside++; });
+  check('a two-tile vault at a sprint stays out of the rock', tall.p.vaults === 1 && inside === 0,
+    `${tall.p.vaults} vaults, ${inside} steps inside rock`);
+}
+
+// 31. a roll down a ramp tumbles down it: the edge scanner offers a roll at
+//     the top of a slope, and that roll used to switch the snap off and send
+//     you sailing clear of the ramp. Off a real ledge it must still let go.
+{
+  // run the stretch [x0, x1) calling rolls one of three ways; count the steps
+  // spent in the air, and how far above the ground they got
+  const tumble = (level, at, x0, x1, how, burst = false) => {
+    const sim = makeSim(at, level);
+    sim.p.flow = 1;
+    if (burst) { sim.run(30, ['right']); sim.run(1, ['right', 'burst']); sim.run(WIND, ['right']); }
+    let air = 0, high = 0, fresh = false;
+    sim.run(600, () => {
+      const k = ['right'];
+      if (how === 'hold') k.push('vault');
+      if (how === 'tap' && sim.p.cue && !fresh) k.push('vault');
+      fresh = !!sim.p.cue;
+      return k;
+    }, (i, pl) => {
+      const x = pl.cx / TILE;
+      if (x < x0 || x >= x1 || pl.vault) return;
+      if (!pl.grounded) air++;
+      const surf = sim.level.floorUnder(pl.x + 1, pl.x + pl.w - 1, pl.footY - 1, pl.footY + 64);
+      if (surf !== null) high = Math.max(high, surf - pl.footY);
+    });
+    return { air, high, rolls: sim.p.vaults };
+  };
+  for (const how of ['tap', 'hold']) {
+    const r = tumble(buildTestArea(), { x: 90, y: 21 }, 98.5, 112, how);
+    check(`a roll down the test area's ramp stays on it (${how})`, r.rolls > 0 && r.air === 0,
+      `${r.rolls} rolls, ${r.air} steps airborne, up to ${r.high.toFixed(0)}px above the slope`);
+  }
+  const b = tumble(buildSpire(), { x: 243.5, y: 7.9 }, 250.5, 280, 'hold', true);
+  check('and so does one in a burst down the spire\'s long ramp', b.rolls > 0 && b.air === 0,
+    `${b.rolls} rolls, ${b.air} steps airborne, up to ${b.high.toFixed(0)}px above the slope`);
+
+  // the five steps down are real ledges: a held roll still drops off each one
+  const steps = tumble(buildTestArea(), { x: 58, y: 24 }, 64, 80, 'hold');
+  check('but a roll off a real ledge still leaves the ground', steps.rolls >= 4 && steps.air > 0,
+    `${steps.rolls} rolls, ${steps.air} steps airborne`);
+}
+
+// 32. the course levels are meant to be run, not waited through: a bot that
+//     holds right, taps C at each prompt, jumps where the ground runs out and
+//     ducks into the tunnels gets from the start (and from every flag, bar
+//     empty) to the goal without dying and all but without stopping, however
+//     the phase blocks happen to be timed when it arrives. Where a level asks
+//     for more than that it is told so, in zones: `hop` (a jump let go after
+//     that many steps, for under the fangs), `dash` (directions, pressed
+//     again and again until a dash starts; `vy` waits for the top of a jump).
+//     Wall-jump shafts are climbed. And every zone has to earn its place:
+//     without it, the run must fail.
+function flatOut(build, from, phaseT, { tunnels = [], shafts = [], zones = [], flowCap = null } = {}) {
+  const sim = makeSim(from, build());
+  sim.level.phaseT = phaseT;
+  const p = sim.p;
+  const inTunnel = (x) => tunnels.some(([a, b]) => x > a - 1.7 && x < b + 0.3);
+  const shaftAt = (x, y) => shafts.find(([a, b, top]) => x > a && x < b && y > top + 0.5);
+  const used = new Set();
+  let hold = 0, letGoAt = -1, fresh = false, side = 1, onWall = 0, stopped = 0, reached = false;
+  let step = 0, gap = false, pending = null, dashKeys = [];
+  sim.run(120 * 40, () => {
+    step++;
+    const x = p.cx / TILE, y = p.footY / TILE;
+    let k = ['right'];
+    if (hold > 0) { hold--; if (step < letGoAt || (letGoAt < 0 && (p.vy < 0 || hold > 32))) k.push('jump'); }
+    const wasGap = gap;
+    gap = false;
+    if (wasGap) return [...dashKeys];                     // a release between dash presses
+    const sh = shaftAt(x, y);
+    if (sh) {                                             // climb it
+      k = hold > 0 && p.vy < 0 ? ['jump'] : [];
+      if (p.grounded) { hold = 30; letGoAt = -1; side = 1; return ['jump', 'right']; }
+      if (p.wallDir !== 0) {
+        if (++onWall > 10 && p.t.wallLock <= 0) { onWall = 0; hold = 30; letGoAt = -1; side = -p.wallDir; return ['jump', side > 0 ? 'right' : 'left']; }
+        return [...k, p.wallDir > 0 ? 'right' : 'left'];
+      }
+      onWall = 0;
+      return [...k, y < sh[2] + 0.2 || side > 0 ? 'right' : 'left'];
+    }
+    const zi = zones.findIndex((z) => x >= z.at[0] && x < z.at[1]);
+    const z = zones[zi];
+    if (z && !used.has(zi)) {
+      if (z.hop && p.grounded) { used.add(zi); hold = 40; letGoAt = step + z.hop; return ['right', 'jump']; }
+      if (z.dash && !p.grounded && p.dashes > 0 && !p.dashing && (z.vy === undefined || p.vy > z.vy)) {
+        pending = zi; dashKeys = [...z.dash]; gap = true;
+        return [...z.dash, 'dash'];
+      }
+    }
+    if (p.cue && !fresh) k.push('vault');
+    fresh = !!p.cue;
+    if ((!p.grounded && p.vy > 350) || p.t.refund > 0) k.push('vault');   // roll out of a hard landing
+    if (p.grounded && hold === 0 && !p.cue && !inTunnel(x) && !(z && z.hop)) {
+      const ahead = p.x + p.w + Math.max(6, Math.abs(p.vx) * 0.04);
+      if (sim.level.floorUnder(ahead, ahead + 2, p.footY - 1, p.footY + 40) === null) { k.push('jump'); hold = 40; letGoAt = -1; }
+    }
+    if (inTunnel(x) && p.grounded) k.push('down');
+    return k;
+  }, (i, pl) => {
+    if (flowCap && pl.cx / TILE > flowCap[0]) pl.flow = Math.min(pl.flow, flowCap[1]);
+    if (pl.dashing && pending !== null) { used.add(pending); pending = null; }
+    if (reached || pl.dead) return;
+    if (pl.grounded && Math.abs(pl.vx) < 60 && !shaftAt(pl.cx / TILE, pl.footY / TILE)) stopped++;
+    const g = sim.level.goal;               // touching it, as the game asks, not just passing under it
+    if (pl.x + pl.w > g.x && pl.x < g.x + g.w && pl.footY > g.y && pl.y < g.y + g.h) reached = true;
+  });
+  return { reached: reached && !p.dead, stopped: stopped / 120, at: (p.cx / TILE).toFixed(0) };
+}
+{
+  const courses = [
+    ['the spire', buildSpire, [{ x: 5, y: 32 }, { x: 48, y: 32.9 }, { x: 138, y: 32.9 }, { x: 228, y: 22.9 }, { x: 333, y: 32.9 }],
+      { tunnels: [[129, 136], [312, 317]], shafts: [[235.5, 241.5, 8]] }],
+    ['undercroft', buildUndercroft, [{ x: 4, y: 30 }, ...[103, 190, 261, 356, 407].map((x) => ({ x, y: 30.9 }))],
+      { tunnels: [[199, 218]],
+        zones: [{ at: [132, 134.5], hop: 10 },
+                { at: [453, 455.5], hop: 10 }],
+        // the crawlway's roof caps every jump, so only top-gear speed carries it:
+        // held to a plain sprint (one bar, no overfill) from its station on, it fails
+        topGear: { from: { x: 407, y: 30.9 }, after: 415 } }],
+    ['skyline', buildSkyline, [{ x: 4, y: 24 }, ...[103, 190, 262, 357, 444, 507].map((x) => ({ x, y: 24.9 }))],
+      { zones: [{ at: [132, 134.5], hop: 10 },
+                { at: [199, 210], dash: ['right'], vy: -40, exact: true }, { at: [210, 222], dash: ['right'], exact: true },
+                { at: [222, 236], dash: ['right'], exact: true },
+                { at: [386, 388.5], hop: 10 },
+                { at: [453, 468], dash: ['right'], vy: -40 }, { at: [468, 484], dash: ['right'] },
+                { at: [516, 526], dash: ['right', 'up'], vy: -40, exact: true }, { at: [526, 536], dash: ['right', 'up'], exact: true },
+                { at: [536, 546], dash: ['right', 'up'], exact: true }, { at: [546, 557], dash: ['right', 'up'], exact: true }] }],
+  ];
+  for (const [name, build, starts, route] of courses) {
+    const runs = [];
+    for (const from of starts)
+      for (const phaseT of [0, 0.9, 1.8]) runs.push({ from: from.x, phaseT, ...flatOut(build, from, phaseT, route) });
+    const bad = runs.filter((r) => !r.reached || r.stopped > 0.5);
+    // crystal chains are the skyline's own trick: everywhere else a crystal is
+    // a spare, so every other course is finished without the bot dashing once
+    if (name !== 'skyline') {
+      check(`${name}: finished without a single dash (crystals are only a spare here)`,
+        !(route.zones ?? []).some((z) => z.dash) && bad.length === 0);
+    }
+    check(`${name} runs flat out from the start and from every flag`, bad.length === 0,
+      bad.length ? bad.map((r) => `from ${r.from} @${r.phaseT}: ${r.reached ? `stopped ${r.stopped.toFixed(2)}s` : `stuck at tile ${r.at}`}`).join('; ')
+                 : `${runs.length} runs, longest stop ${Math.max(...runs.map((r) => r.stopped)).toFixed(2)}s`);
+    // each special move is needed: drop it and the run from the flag before it
+    // fails. Dash zones that run on one into the next are one move (a chain,
+    // or a dash with a second one to fall back on) and are dropped together.
+    const zones = route.zones ?? [];
+    const moves = [];
+    zones.forEach((z, zi) => {
+      const last = moves[moves.length - 1];
+      if (z.dash && last && zones[last[last.length - 1]].dash && zones[last[last.length - 1]].at[1] === z.at[0]) last.push(zi);
+      else moves.push([zi]);
+    });
+    for (const move of moves) {
+      const z = zones[move[0]];
+      const from = [...starts].reverse().find((f) => f.x < z.at[0]);
+      const r = flatOut(build, from, 0, { ...route, zones: zones.filter((_, j) => !move.includes(j)) });
+      check(`${name}: the ${z.hop ? 'hop' : move.length > 1 ? 'dashes' : 'dash'} at tile ${z.at[0]} ${move.length > 1 ? 'are' : 'is'} needed`,
+        !r.reached, `without: ${r.reached ? 'still made it' : `stopped at tile ${r.at}`}`);
+      // a crystal chain marked `exact` needs every link: one dash short fails
+      if (move.length > 1 && zones[move[0]].exact) {
+        const short = flatOut(build, from, 0, { ...route, zones: zones.filter((_, j) => j !== move[move.length - 1]) });
+        check(`${name}: the crystal chain at tile ${z.at[0]} needs all ${move.length} dashes`, !short.reached,
+          `one short: ${short.reached ? 'still made it' : `stopped at tile ${short.at}`}`);
+      }
+    }
+    if (route.topGear) {
+      const { from, after } = route.topGear;
+      const full = flatOut(build, from, 0, route);
+      const sprint = flatOut(build, from, 0, { ...route, flowCap: [after, 1] });
+      check(`${name}: the stretch from tile ${after} takes top gear, not just a sprint`, full.reached && !sprint.reached,
+        `in top gear: ${full.reached ? 'made it' : `stopped at ${full.at}`}; on a sprint: ${sprint.reached ? 'still made it' : `stopped at ${sprint.at}`}`);
+    }
+  }
+}
+
+// 33. the spire's phase pit is spiked, and taken in one go: the pad in front
+//     of it fires everyone at one speed and restarts the phase clock, so a
+//     full jump off each edge lands on a block that is there, whenever you
+//     arrived. Without the restart, plenty of arrival times would die.
+{
+  const cross = (phaseT, synced) => {
+    const lvl = buildSpire();
+    if (!synced) for (const b of lvl.boosts) b.sync = null;
+    const sim = makeSim({ x: 138, y: 32.9 }, lvl);        // the flag, bar empty
+    sim.level.phaseT = phaseT;
+    let hold = 0;
+    sim.run(600, () => {
+      const p = sim.p;
+      const k = ['right'];
+      if (hold > 0) { hold--; if (p.vy < 0 || hold > 32) k.push('jump'); }
+      const ahead = p.x + p.w + Math.max(6, Math.abs(p.vx) * 0.04);
+      if (p.grounded && hold === 0 && sim.level.floorUnder(ahead, ahead + 2, p.footY - 1, p.footY + 40) === null) {
+        k.push('jump'); hold = 40;
+      }
+      return k;
+    });
+    return !sim.p.dead && sim.p.cx / TILE > 197;
+  };
+  const times = Array.from({ length: 14 }, (_, i) => i * 0.2);
+  const made = times.filter((t) => cross(t, true)).length;
+  const blind = times.filter((t) => cross(t, false)).length;
+  check('the phase pit is crossed in one go whenever you arrive', made === times.length,
+    `${made}/${times.length} arrival times`);
+  check('and that is the pad\'s doing: without its clock restart, arrivals die', blind < times.length,
+    `${blind}/${times.length} would make it unsynced`);
+  const L = buildSpire();
+  let spiked = true;
+  for (let x = 148; x < 196; x++) if (L.get(x, 37) !== T.SPIKE_UP) spiked = false;
+  check('and the pit under it is spiked all the way across', spiked);
 }
 
 print(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURE(S)`);

@@ -13,10 +13,15 @@ export const T = {
   SPIKE_DOWN: 6,
   DECO: 7,      // background rock, not collidable
   LOWCEIL: 8,   // stone lip hanging from the ceiling: only a slide fits under it
+  // The two below are solid while they are there at all. When one goes away
+  // its cell is set back to EMPTY, so every collision query stays oblivious;
+  // the bookkeeping that brings them back lives in `crumbles` / `phases`.
+  CRUMBLE: 9,   // gives way a moment after you touch it, grows back later
+  PHASE: 10,    // one of two sets of blocks that take turns existing
 };
 
 // How far down into its cell a tile is solid: [top, bottom] in pixels.
-export const SPAN = { [T.SOLID]: [0, 16], [T.LOWCEIL]: [0, 6] };
+export const SPAN = { [T.SOLID]: [0, 16], [T.LOWCEIL]: [0, 6], [T.CRUMBLE]: [0, 16], [T.PHASE]: [0, 16] };
 
 export const isSlope = (t) => t === T.SLOPE_R || t === T.SLOPE_L;
 export const isSpike = (t) => t === T.SPIKE_UP || t === T.SPIKE_DOWN;
@@ -31,6 +36,10 @@ export class Level {
     this.springs = [];
     this.checkpoints = [];
     this.signs = [];
+    this.crumbles = [];
+    this.phases = [];
+    this.boosts = [];
+    this.phaseT = 0;     // world clock the phase blocks keep time on
     this.goal = null;
     this.killY = h * TILE + 64;
   }
@@ -85,12 +94,43 @@ export class Level {
   checkpoint(tx, ty) { this.checkpoints.push({ x: tx * TILE + TILE / 2, y: ty * TILE, on: false, t: 0 }); return this; }
   sign(tx, ty, title, lines) { this.signs.push({ x: tx * TILE, y: ty * TILE, title, lines }); return this; }
 
+  /** A row of blocks that give way under you (see mechanics.js). */
+  crumble(tx, ty, w = 1, h = 1) {
+    for (let y = ty; y < ty + h; y++) {
+      for (let x = tx; x < tx + w; x++) {
+        this.set(x, y, T.CRUMBLE);
+        this.crumbles.push({ tx: x, ty: y, state: 'idle', t: 0 });
+      }
+    }
+    return this;
+  }
+
+  /** Phase blocks: `group` 0 and 1 take turns being solid. */
+  phase(tx, ty, w, h, group) {
+    for (let y = ty; y < ty + h; y++) {
+      for (let x = tx; x < tx + w; x++) {
+        this.set(x, y, group === 0 ? T.PHASE : T.EMPTY);
+        this.phases.push({ tx: x, ty: y, group, on: group === 0 });
+      }
+    }
+    return this;
+  }
+
+  /** A boost pad lying on the surface of row `ty`, `w` tiles long, firing `dir`.
+   *  With `sync`, stepping on it also sets the phase clock to that many seconds
+   *  (see mechanics.js), so the phase blocks beyond it keep time with you. */
+  boost(tx, ty, w, dir = 1, { sync = null } = {}) {
+    this.boosts.push({ x: tx * TILE, y: ty * TILE, w: w * TILE, dir, t: 0, sync });
+    return this;
+  }
+
   // --- collision ---------------------------------------------------------
 
   /** Surface height (world y) of a tile's walkable top at world x, or null. */
   surfaceY(tx, ty, x) {
     const t = this.get(tx, ty);
-    if (t === T.SOLID || t === T.ONEWAY || t === T.SPIKE_UP || t === T.SPIKE_DOWN || t === T.LOWCEIL) return ty * TILE;
+    if (t === T.SOLID || t === T.ONEWAY || t === T.SPIKE_UP || t === T.SPIKE_DOWN || t === T.LOWCEIL ||
+        t === T.CRUMBLE || t === T.PHASE) return ty * TILE;
     if (t === T.SLOPE_R) return ty * TILE + (TILE - 1 - clamp(Math.floor(x) - tx * TILE, 0, TILE - 1));
     if (t === T.SLOPE_L) return ty * TILE + clamp(Math.floor(x) - tx * TILE, 0, TILE - 1);
     return null;
@@ -98,7 +138,7 @@ export class Level {
 
   blocking(tx, ty) {
     const t = this.get(tx, ty);
-    return t === T.SOLID || t === T.LOWCEIL;
+    return t === T.SOLID || t === T.LOWCEIL || t === T.CRUMBLE || t === T.PHASE;
   }
 
   /** Vertical extent of a blocking tile within its own cell. */
