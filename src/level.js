@@ -42,10 +42,17 @@ export class Level {
     this.phaseT = 0;     // world clock the phase blocks keep time on
     this.goal = null;
     this.killY = h * TILE + 64;
+    // The end of a level is an invisible wall, not a rock face (see get and
+    // boxHitsWall). Opening it lets the walk-off after the goal carry on past
+    // the edge and off screen, the camera having stopped at the edge.
+    this.exitOpen = false;
   }
 
   get(tx, ty) {
-    if (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) return T.EMPTY;
+    // Past the right-hand edge the level carries on as its last column, so the
+    // ground runs on under the walk-off and the bake draws no cliff face there.
+    if (tx >= this.w) tx = this.w - 1;
+    if (tx < 0 || ty < 0 || ty >= this.h) return T.EMPTY;
     return this.tiles[ty * this.w + tx];
   }
 
@@ -150,7 +157,9 @@ export class Level {
     const y0 = Math.floor(y / TILE), y1 = Math.floor((y + h - 1) / TILE);
     for (let ty = y0; ty <= y1; ty++) {
       for (let tx = x0; tx <= x1; tx++) {
-        if (tx < 0 || tx >= this.w) return true;       // level edges are walls
+        // the level's edges are walls: the left one rock, the right one invisible
+        // (and open once the level is done, for the walk-off)
+        if (tx < 0 || (tx >= this.w && !this.exitOpen)) return true;
         if (!this.blocking(tx, ty)) continue;
         const [top, bot] = this.span(this.get(tx, ty));
         if (y + h > ty * TILE + top && y < ty * TILE + bot) return true;

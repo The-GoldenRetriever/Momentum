@@ -14,7 +14,7 @@
 
 import { Level, T, TILE } from '../level.js';
 
-const W = 560;           // (with a run-out past the goal for the walk-off)
+const W = 536;           // (with a run-out past the goal for the walk-off)
 const H = 44;
 const GY = 32;           // row of the main ground surface
 const PILLAR = 6;        // a pillar is about a third of a second underfoot at speed
@@ -48,7 +48,6 @@ export function buildUndercroft() {
 
   // ---- world shell -------------------------------------------------------
   L.rect(0, 0, 2, H);
-  L.rect(W - 2, 0, 2, H);
   L.rect(0, 0, W, 1);
 
   // ===================================================== A — the pillars
@@ -113,7 +112,7 @@ export function buildUndercroft() {
     'The roof is down to four tiles. Every jump hits it,',
     'so only speed carries you. Keep top gear the whole way.',
   ]);
-  roof(f, W - 2, GY - 4);
+  roof(f, W, GY - 4);
   pit(f, CRAWL[CRAWL.length - 1][0] + 6);
   for (const [dx, kind] of CRAWL) {
     if (kind === 'sand') L.crumble(f + dx, GY, 5);
@@ -123,7 +122,7 @@ export function buildUndercroft() {
     if (kind === 'fang') L.spikes(f + dx + 5, GY - 5, CRAWL_FANG, 'down');
   }
   const end = f + CRAWL[CRAWL.length - 1][0] + 6;
-  ground(end, W - 2);
+  ground(end, W);
   L.goal = { x: (end + 6) * TILE, y: (GY - 4) * TILE, w: TILE * 2, h: TILE * 4, hit: false };
 
   return L;

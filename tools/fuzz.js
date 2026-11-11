@@ -1,6 +1,6 @@
 // fuzz.js — hammer every level with random input and assert the player is
 // never left buried in the rock. jsc --module-file=tools/fuzz.js
-import { makeSim } from './sim.js';
+import { makeSim } from './harness.js';
 import { TILE } from '../src/level.js';
 import { LEVELS } from '../src/levels/index.js';
 import { updateMechanics } from '../src/mechanics.js';

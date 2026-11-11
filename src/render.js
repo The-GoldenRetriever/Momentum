@@ -89,6 +89,50 @@ export const THEMES = {
     moss: '#e8c45a', mossLit: '#ffe89a', mossDark: '#b08a32', mossShade: '#7a5a22',
     vine: '#c09a3a', vineDark: '#86642a', vineLit: '#ffe08a',
   },
+  // first light: a cold blue sky going pale at the horizon, steel girders,
+  // frost on the grass
+  dawn: {
+    sky: ['#101a33', '#25365c', '#5a6f96', '#d9b8a4'],
+    stars: 0.5, star: '220,232,255', cloud: '200,214,240', haze: 'rgba(90,110,150,0.12)',
+    orb: { x: 360, y: 150, r: 18, lit: '#fff1d6', dim: '#ffd9a8', glow: '255,226,190' },
+    ridges: [
+      { col: '#3a4a6e', rim: '#5d7096', shade: '#2e3c5c', snow: 'rgba(235,242,255,0.35)' },
+      { col: '#2f3d5e', rim: '#4d6086', shade: '#25314d', snow: 'rgba(225,235,255,0.22)' },
+      { col: '#25314d', rim: '#3e5072', shade: '#1c2640' },
+      { col: '#1c2640', rim: '#33435f', shade: '#151d33' },
+    ],
+    bands: [
+      { mid: '#5a6a8a', lit: '#7d8fb2', dark: '#43506c', vein: '#a8bce0' },
+      { mid: '#48566f', lit: '#5f7091', dark: '#343f54', vein: '#8396bb' },
+      { mid: '#353f54', lit: '#46536d', dark: '#262e3f', vein: '#5b6a8a' },
+      { mid: '#272f40', lit: '#333d52', dark: '#1b2130', vein: '#414d66' },
+    ],
+    edge: '#a6b8dc', edgeDim: '#6e7fa2', rockDeep: '#1d2333',
+    moss: '#cfe6f2', mossLit: '#ffffff', mossDark: '#8fb0c4', mossShade: '#5d7d92',
+    vine: '#9ec4d6', vineDark: '#5f8698', vineLit: '#e8f8ff',
+  },
+  // deep down where the rock runs hot: charcoal stone, glowing seams, ember
+  // growth instead of moss
+  ember: {
+    sky: ['#0a0406', '#1a0709', '#2c0c0c', '#46160e'],
+    stars: 0.4, star: '255,150,90', cloud: '140,50,30', haze: 'rgba(120,40,20,0.16)',
+    orb: null,
+    ridges: [
+      { col: '#1e0a0b', rim: '#4a1a12', shade: '#160708' },
+      { col: '#240c0c', rim: '#56200f', shade: '#1a0809' },
+      { col: '#2c0f0d', rim: '#6a2a12', shade: '#200a0a' },
+      { col: '#34120e', rim: '#7a3414', shade: '#270d0b' },
+    ],
+    bands: [
+      { mid: '#4a3a3a', lit: '#66504c', dark: '#352828', vein: '#ff8a3c' },
+      { mid: '#3a2d2e', lit: '#4f3d3d', dark: '#291f20', vein: '#d86a2c' },
+      { mid: '#2b2122', lit: '#3a2c2d', dark: '#1e1617', vein: '#a04a20' },
+      { mid: '#201819', lit: '#2b2021', dark: '#161011', vein: '#6e3218' },
+    ],
+    edge: '#ff9a52', edgeDim: '#b0582c', rockDeep: '#1a1112',
+    moss: '#ff7a2e', mossLit: '#ffd08a', mossDark: '#c04a1a', mossShade: '#7a2a10',
+    vine: '#e05a22', vineDark: '#8a3214', vineLit: '#ffb060',
+  },
 };
 
 // The theme being baked. Only ever read while a Renderer is being built, so

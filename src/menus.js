@@ -187,7 +187,8 @@ export class Menus {
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     centred(ctx, 'select level', 14, HOT, 2, '#150f26');
 
-    const x = 28, y = 40, w = VIEW_W - 56, rowH = 14;
+    // rows tighten up as the list grows, so the map below still has room
+    const x = 28, y = 40, w = VIEW_W - 56, rowH = LEVELS.length > 5 ? 12 : 14;
     panel(ctx, x, y, w, LEVELS.length * rowH + 8);
     LEVELS.forEach((lv, i) => {
       const ry = y + 4 + i * rowH;
@@ -210,10 +211,13 @@ export class Menus {
     (lv.blurb ?? []).forEach((line, i) => centred(ctx, line, by + i * 8, '#b9b2d6', 1));
     const targets = medalTimes(lv).map((m) => `${m.name} ${fmtTime(m.time)}`).join('   ');
     centred(ctx, targets, by + (lv.blurb?.length ?? 0) * 8 + 2, '#7a6fb5', 1);
+    // The map fits the space left under the text, by width and by height: a
+    // tall level (the cascade drops seventy rows) used to spill up over it.
     const th = this.thumbs[this.sel];
-    const scale = Math.min(1, (VIEW_W - 40) / th.width);
+    const ty = by + (lv.blurb?.length ?? 0) * 8 + 16;
+    const scale = Math.min(1, (VIEW_W - 40) / th.width, (VIEW_H - 22 - ty) / th.height);
     const tw = Math.round(th.width * scale), thh = Math.round(th.height * scale);
-    const tx = Math.round((VIEW_W - tw) / 2), ty = Math.min(VIEW_H - thh - 22, by + (lv.blurb?.length ?? 0) * 8 + 16);
+    const tx = Math.round((VIEW_W - tw) / 2);
     panel(ctx, tx - 3, ty - 3, tw + 6, thh + 6, 0.85);
     ctx.drawImage(th, tx, ty, tw, thh);
 

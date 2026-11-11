@@ -45,9 +45,8 @@ export function buildSkyline() {
     return x0 + 10;
   };
 
-  // ---- world shell (side walls only: the sky is open above and below) ----
+  // ---- world shell (a wall behind you only: the sky is open all round) ----
   L.rect(0, 0, 2, H);
-  L.rect(W - 2, 0, 2, H);
 
   // ==================================================== A — the leaps
   island(2, 21);
@@ -118,7 +117,7 @@ export function buildSkyline() {
   L.crystal(g + 12, S - 8);
   L.crystal(g + 22, S - 12);
   L.crystal(g + 32, S - 15);               // low enough for a dash that ran low
-  island(g + 43, W - 2, S - 17);
+  island(g + 43, W, S - 17);
   L.goal = { x: (g + 54) * TILE, y: (S - 21) * TILE, w: TILE * 2, h: TILE * 4, hit: false };
 
   return L;

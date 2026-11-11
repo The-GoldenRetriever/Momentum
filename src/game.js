@@ -11,7 +11,7 @@ import { drawHud } from './hud.js';
 import { BindMenu } from './binds.js';
 import { Menus } from './menus.js';
 import { sfx } from './audio.js';
-import { WALK_TIME, WALK_SPEED, FADE_TIME, LOAD_TIME, drawLetterbox, drawFade, drawLoading } from './cutscene.js';
+import { WALK_SPEED, WALK_MAX, OFF_EDGE, FADE_TIME, LOAD_TIME, drawLetterbox, drawFade, drawLoading } from './cutscene.js';
 
 const RESULTS_DELAY = 0.8;        // let the goal burst play before the panel covers it
 const bestKey = (lv) => `momentum.best.${lv.id}`;
@@ -78,7 +78,9 @@ export class Game {
     this.ui.close();
     this.player.bursting = false;      // no slow motion through the walk-off
     this.player.burstWind = 0;
-    this.cutscene = { phase: 'walk', t: 0, next: this.levelIndex + 1 };
+    this.level.exitOpen = true;        // through the end wall and off screen
+    // `out` counts up from the moment they are past the edge: the fade
+    this.cutscene = { phase: 'walk', t: 0, out: null, next: this.levelIndex + 1 };
   }
 
   #cutsceneStep(dt, realDt) {
@@ -92,7 +94,9 @@ export class Game {
       this.fx.update(dt);
       this.cam.follow(p, dt);
       this.renderer.updateScarf(p, dt);
-      if (cs.t >= WALK_TIME) { cs.phase = 'load'; cs.t = 0; cs.loaded = false; }
+      if (cs.out === null && (p.dead || p.x > this.level.w * TILE + OFF_EDGE)) cs.out = 0;
+      else if (cs.out !== null) cs.out += realDt;
+      if (cs.out >= FADE_TIME || cs.t >= WALK_MAX) { cs.phase = 'load'; cs.t = 0; cs.loaded = false; }
     } else {
       // Build the next level once the black screen has been drawn at least
       // once, so the moment it takes to bake is spent behind it.
@@ -271,7 +275,7 @@ export class Game {
       this.renderer.hideActors = false;
       this.renderer.draw(this, dt, realDt);
       drawLetterbox(this.ctx, Math.min(1, cs.t / 0.4));
-      drawFade(this.ctx, (cs.t - (WALK_TIME - FADE_TIME)) / FADE_TIME);
+      drawFade(this.ctx, (cs.out ?? 0) / FADE_TIME);
       return;
     }
     const scenery = this.ui.screen === 'title' || (this.ui.screen === 'select' && !this.playing);

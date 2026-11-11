@@ -18,9 +18,12 @@ function panel(ctx, x, y, w, h, alpha = 0.82) {
 }
 
 export function fmtTime(s) {
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  const cs = Math.floor((s * 100) % 100);
+  // Whole hundredths first: 19.9 * 100 is 1989.9999..., which used to show
+  // a medal time of 19.90 as 0:19.89. The nudge only rescues float error.
+  const all = Math.floor(s * 100 + 1e-6);
+  const m = Math.floor(all / 6000);
+  const sec = Math.floor(all / 100) % 60;
+  const cs = all % 100;
   return `${m}:${String(sec).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
 }
 

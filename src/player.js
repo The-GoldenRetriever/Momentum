@@ -23,7 +23,8 @@ export const P = {
                              // top speed and you keep getting faster
   FLOW_MAX: 1.6,             // the bar holds more than one bar: the overfill
                              // is top gear and burst fuel at once
-  FLOW_GAIN: 0.6,            // bar per second while you keep up a real run
+  FLOW_GAIN: 0.5,            // bar per second while you keep up a real run:
+                             // slow enough that a bar lost is a bar missed
   FLOW_DRAIN: 0.5,           // ... per second lost coasting or holding back
   FLOW_STALL: 1.8,           // ... and per second lost crawling (under 70 px/s)
   ACCEL: 1500,
@@ -108,6 +109,10 @@ export const P = {
   LAND_FREE: 80,             // a jump coming down more than this from its peak
   LAND_FULL: 220,            // ... costs speed, reaching LAND_LOSS by here,
   LAND_LOSS: 0.40,           // unless you roll out of it (C on landing)
+  LAND_FLOW_LOSS: 0.60,      // share of the bar a full-price fumble (a hard
+                             // landing or a drop, on your feet) takes with it.
+                             // The speed itself comes back in a stride; the bar
+                             // does not, and top gear goes with it
 
   // --- burst: spend a full flow bar on bullet time -----------------------
   BURST_SPEED: 560,          // SPEED x SCALE is what you see on screen
@@ -783,7 +788,7 @@ export class Player {
     const loss = Math.abs(this.vx) * P.LAND_LOSS * f;
     if (loss < 8) return;
     this.lostSpeed = loss;
-    this.lostFlow = this.flow * 0.3 * f;
+    this.lostFlow = this.flow * P.LAND_FLOW_LOSS * f;
     this.vx -= Math.sign(this.vx) * loss;
     this.flow -= this.lostFlow;
     this.t.refund = P.ROLL_REFUND;
@@ -806,7 +811,7 @@ export class Player {
     const loss = Math.abs(this.vx) * bite;
     if (loss < 8) return;
     this.lostSpeed = loss;
-    this.lostFlow = this.flow * 0.3 * Math.min(1, f + air);
+    this.lostFlow = this.flow * P.LAND_FLOW_LOSS * Math.min(1, f + air);
     this.vx -= Math.sign(this.vx) * loss;
     this.flow -= this.lostFlow;
     this.t.refund = P.ROLL_REFUND;

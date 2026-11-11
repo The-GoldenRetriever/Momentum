@@ -28,7 +28,6 @@ export function buildSpire() {
 
   // ---- world shell -------------------------------------------------------
   L.rect(0, 0, 2, H);
-  L.rect(W - 2, 0, 2, H);
   L.rect(0, 0, W, 1);
 
   // ===================================================== A — the gauntlet
@@ -125,7 +124,7 @@ export function buildSpire() {
   ground(277, 280);
   pit(280, 14);
   L.crumble(280, GY, 14);                  // at speed it holds; slow, it does not
-  ground(294, W - 2);
+  ground(294, W);
   // One more phase trench at full tilt: stay up top, or vault out of it. The
   // last four tiles are open sky, because a vault needs headroom where it
   // starts: a block over the exit wall would leave you stood against it.

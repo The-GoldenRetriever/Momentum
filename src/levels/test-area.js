@@ -18,7 +18,6 @@ export function buildTestArea() {
 
   // ---- world shell -------------------------------------------------------
   L.rect(0, 0, 2, H);
-  L.rect(W - 2, 0, 2, H);
   L.rect(0, 0, W, 1);
 
   // ======================================================= A — run & jump
@@ -164,7 +163,7 @@ export function buildTestArea() {
   L.rect(304, GY - 1, 2, H - GY + 1);      // one last ledge to vault at full tilt
   L.rect(308, GY - 6, 9, 5);
   L.rect(308, GY - 1, 9, 1, T.LOWCEIL);    // slide finish
-  ground(320, W - 2);
+  ground(320, W);
   L.goal = { x: 324 * TILE, y: (GY - 4) * TILE, w: TILE * 2, h: TILE * 4, hit: false };
 
   // ---- scenery -----------------------------------------------------------
