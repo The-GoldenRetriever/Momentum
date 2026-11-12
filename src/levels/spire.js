@@ -118,7 +118,7 @@ export function buildSpire() {
   L.rect(243, GY - 26, 8, H - GY + 26);    // the summit
   L.sign(247, GY - 27, 'DESCENT', [
     'All of it at once, downhill, to the gate.',
-    'Fill the bar on the slope. You will want it.',
+    'Roll down the long slope (C) and take the speed with you.',
   ]);
   L.ramp(251, GY - 1, 26, -1, H - 1);      // a long fall turned into speed
   ground(277, 280);

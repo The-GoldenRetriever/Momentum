@@ -20,6 +20,9 @@ export const M = {
   BOOST_SPEED: 520,          // well past a sprint: overspeed drag bleeds it off
                              // on the ground, so a pad wants a jump soon after
   BOOST_FLOW: 0.12,
+
+  STILL_START: 0.5,          // the Stillness sets off at this share of its pace
+  STILL_GATHER: 6,           // ... and is at all of it this many seconds later
 };
 
 const overlaps = (p, tx, ty, pad = 0) =>
@@ -34,6 +37,23 @@ export function phaseState(L) {
 
 export function updateMechanics(L, p, dt) {
   const alive = !p.dead;
+
+  // ---- the Stillness: it waits for you to move, then comes on and does not
+  // stop. Never more than `reach` behind, so a second given away is a second
+  // closer. It halts at the goal: once you are there it has lost.
+  // It gathers itself first, from about half its pace to all of it over a few
+  // seconds, so getting going from a standstill (the start, every flag) is a
+  // race you can win.
+  const ch = L.chase;
+  if (ch && alive && !(L.goal && L.goal.hit)) {
+    if (!ch.on && Math.abs(p.vx) > 8) ch.on = true;
+    if (ch.on) {
+      ch.t += dt;
+      const pace = ch.speed * Math.min(1, M.STILL_START + ch.t / M.STILL_GATHER);
+      ch.x = Math.max(ch.x + pace * dt, p.x - ch.reach * TILE);
+    }
+    if (p.x < ch.x) p.kill('still');
+  }
 
   // ---- crumbling blocks. Feet, either side or the top of your head all count:
   // a crumble is a hold for a moment, never a wall or a floor you can keep.
@@ -110,8 +130,10 @@ export function updateMechanics(L, p, dt) {
 }
 
 /** Put every block back the way the level was built: on respawn and restart,
- *  so a death never leaves the way forward missing. */
-export function resetMechanics(L) {
+ *  so a death never leaves the way forward missing. `fromX` is where you are
+ *  coming back in, and the Stillness waits a little way behind it. */
+export function resetMechanics(L, fromX = null) {
+  if (L.chase && fromX !== null) { L.chase.x = fromX - L.chase.lead * TILE; L.chase.on = false; L.chase.t = 0; }
   for (const c of L.crumbles) { c.state = 'idle'; c.t = 0; L.set(c.tx, c.ty, T.CRUMBLE); }
   for (const b of L.boosts) b.t = 0;
   for (const s of L.springs) s.t = 0;

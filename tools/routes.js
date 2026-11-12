@@ -3,12 +3,36 @@
 // then each flag), and anything it needs telling (tunnels to duck into, shafts
 // to climb, zones for hops and dashes). sim.js check 32 proves each route, and
 // that every zone is needed; tools/route.js runs one and prints its jumps.
-// If you move geometry in a course, move its route with it.
+// If you move geometry in a course, move its route with it (or have it mark
+// itself: see `marked`).
 //
 // `topGear: { from, after }` claims the stretch past tile `after` takes top
 // gear: held to a plain sprint (one bar, no overfill) from flag `from`, the
-// bot must fail. `rolls: { from }` claims the rolls are needed: run from flag
-// `from` without rolling out of landings, the bot must fail.
+// bot must fail.
+import { TILE } from '../src/level.js';
+import { buildOverpass } from '../src/levels/overpass.js';
+import { buildUpdraft } from '../src/levels/updraft.js';
+import { buildFurnace } from '../src/levels/furnace.js';
+import { buildTidewater } from '../src/levels/tidewater.js';
+import { buildStillness } from '../src/levels/stillness.js';
+import { buildGlacier } from '../src/levels/glacier.js';
+
+// A course that marks itself (L.marks: its flags, the edges its fang hops
+// leave from, and where each run-up ends) gets its route worked out from
+// the geometry: start from the spawn and every flag, hop at each fang, and
+// claim top gear for every stretch after a run-up.
+function marked(build) {
+  const L = build(), m = L.marks;
+  const starts = [{ x: L.spawn.x / TILE, y: L.spawn.y / TILE }, ...m.flags.map((f) => ({ x: f.x + 3, y: f.y - 1.1 }))];
+  const hops = m.hops.map((x) => ({ at: [x - 2.6, x - 0.4], hop: 10 }));
+  return {
+    starts,
+    zones: [...hops, ...(m.zones ?? [])].sort((a, b) => a.at[0] - b.at[0]),
+    tunnels: m.tunnels ?? [],
+    topGear: m.runups.map((after, i) => ({ from: starts[i], after })),
+  };
+}
+
 export const ROUTES = {
   spire: {
     starts: [{ x: 5, y: 32 }, { x: 48, y: 32.9 }, { x: 138, y: 32.9 }, { x: 228, y: 22.9 }, { x: 333, y: 32.9 }],
@@ -34,26 +58,10 @@ export const ROUTES = {
             { at: [516, 526], dash: ['right', 'up'], vy: -40, exact: true }, { at: [526, 536], dash: ['right', 'up'], exact: true },
             { at: [536, 546], dash: ['right', 'up'], exact: true }, { at: [546, 557], dash: ['right', 'up'], exact: true }],
   },
-  overpass: {
-    starts: [{ x: 4, y: 24 }, ...[145, 275, 420].map((x) => ({ x, y: 24.9 }))],
-    zones: [{ at: [345, 347.6], hop: 10 }, { at: [383, 385.6], hop: 10 }, { at: [490, 492.6], hop: 10 }],
-    topGear: [{ from: { x: 4, y: 24 }, after: 60 }, { from: { x: 145, y: 24.9 }, after: 191 },
-              { from: { x: 275, y: 24.9 }, after: 327 }, { from: { x: 420, y: 24.9 }, after: 472 }],
-  },
-  // The momentum courses: no pads, so every section proves it takes top gear
-  // from its own flag (bar empty), and the falls prove they take the rolls.
-  cascade: {
-    starts: [{ x: 4, y: 10 }, { x: 149, y: 34.9 }, { x: 240, y: 26.9 }, { x: 405, y: 58.9 }],
-    topGear: [{ from: { x: 4, y: 10 }, after: 62 }, { from: { x: 149, y: 34.9 }, after: 176 },
-              { from: { x: 240, y: 26.9 }, after: 291 }, { from: { x: 405, y: 58.9 }, after: 448 }],
-    rolls: [{ from: { x: 4, y: 10 } }, { from: { x: 240, y: 26.9 } }, { from: { x: 405, y: 58.9 } }],
-  },
-  furnace: {
-    starts: [{ x: 4, y: 10 }, ...[147, 286, 419].map((x) => ({ x, y: 34.9 }))],
-    tunnels: [[468, 504]],
-    zones: [{ at: [345, 347.6], hop: 10 }, { at: [371, 373.6], hop: 10 }],
-    topGear: [{ from: { x: 4, y: 10 }, after: 62 }, { from: { x: 147, y: 34.9 }, after: 197 },
-              { from: { x: 286, y: 34.9 }, after: 335 }, { from: { x: 419, y: 34.9 }, after: 468 }],
-    rolls: { from: { x: 4, y: 10 } },
-  },
+  tidewater: marked(buildTidewater),
+  stillness: marked(buildStillness),
+  overpass: marked(buildOverpass),
+  updraft: marked(buildUpdraft),
+  furnace: marked(buildFurnace),
+  glacier: marked(buildGlacier),
 };

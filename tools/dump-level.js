@@ -3,7 +3,7 @@
 import { LEVELS } from '../src/levels/index.js';
 import { T } from '../src/level.js';
 
-const CH = { 0: '.', 1: '#', 2: '/', 3: '\\', 4: '-', 5: '^', 6: 'v', 7: ',', 8: '=', 9: '~', 10: 'a' };
+const CH = { 0: '.', 1: '#', 2: '/', 3: '\\', 4: '-', 5: '^', 6: 'v', 7: ',', 8: '=', 9: '~', 10: 'a', 11: 'w' };
 const L = LEVELS[Number(arguments[2] ?? 1) - 1].build();
 const from = Number(arguments[0] ?? 0);
 const to = Number(arguments[1] ?? 60);

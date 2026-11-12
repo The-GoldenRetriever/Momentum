@@ -83,10 +83,16 @@ class Sfx {
               this.noise({ dur: 0.16, from: 1200, to: 4200, gain: 0.14 }); }
   crumble() { this.noise({ dur: 0.2, from: 700, to: 140, gain: 0.22 }); }
   menuMove(){ this.tone({ freq: 660, dur: 0.04, type: 'triangle', gain: 0.14 }); }
+  locked()  { this.tone({ freq: 220, to: 180, dur: 0.12, type: 'square', gain: 0.12 }); }
   menuPick(){ this.tone({ freq: 520, to: 1040, dur: 0.09, type: 'triangle', gain: 0.22 }); }
   crystal() { this.tone({ freq: 880, dur: 0.07, type: 'triangle', gain: 0.3 });
               this.tone({ freq: 1320, dur: 0.09, type: 'triangle', gain: 0.25, delay: 0.06 }); }
   death()   { this.tone({ freq: 420, to: 60, dur: 0.4, type: 'sawtooth', gain: 0.35 }); }
+  splash()  { this.noise({ dur: 0.45, from: 2400, to: 200, gain: 0.4 });
+              this.tone({ freq: 300, to: 70, dur: 0.35, type: 'sine', gain: 0.3 }); }
+  skim()    { this.noise({ dur: 0.06, from: 5200, to: 2600, gain: 0.07 }); }
+  // the Stillness taking you: a chord that stops, rather than falls
+  frozen()  { [880, 1109, 1319].forEach((f) => this.tone({ freq: f, dur: 0.6, type: 'triangle', gain: 0.16 })); }
   checkpoint() { this.tone({ freq: 660, dur: 0.08, type: 'triangle', gain: 0.25 });
                  this.tone({ freq: 990, dur: 0.14, type: 'triangle', gain: 0.22, delay: 0.07 }); }
   goal()    { [523, 659, 784, 1046].forEach((f, i) =>

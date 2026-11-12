@@ -143,32 +143,28 @@ const springless = () => { const L = buildTestArea(); L.springs.length = 0; retu
     `y=${topY.toFixed(0)} vaulted=${vaulted}`);
 }
 
-// 9. the speed economy: a called vault is free, a scuffed drop is not, and a
-//    roll — on the lip or just after the landing — hands the speed back.
+// 9. coming down is free: running off ledges on your feet keeps every bit
+//    of the run, the same as rolling down them (rolling is style, not a need).
 function ledgeRun(mode) {
   const sim = makeSim({ x: 62, y: 22 });     // the top of the descending staircase
-  let before = 0, after = 0, refunded = false;
+  let before = 0, after = 0;
   sim.run(240, () => {
     const k = ['right'];
     if (mode === 'roll' && sim.p.cue && sim.p.cue.kind === 'down') k.push('vault');
-    if (mode === 'late' && sim.p.t.refund > 0) k.push('vault');
     return k;
   }, (i, pl) => {
     if (Math.floor(pl.cx / TILE) <= 66) before = Math.max(before, Math.abs(pl.vx));
     if (Math.floor(pl.cx / TILE) >= 76) after = Math.max(after, Math.abs(pl.vx));
-    if (pl.rolling > 0) refunded = true;
   });
-  return { before, after, refunded, keep: after / before };
+  return { before, after };
 }
 {
   const plain = ledgeRun('none');
   const rolled = ledgeRun('roll');
-  const late = ledgeRun('late');
-  // (the stairs are also a downhill, so everyone gains — what matters is the gap)
-  check('rolling down ledges beats stumbling down them', rolled.after > plain.after * 1.05,
-    `rolled ${rolled.after.toFixed(0)} vs plain ${plain.after.toFixed(0)} px/s`);
-  check('a late roll buys back most of the difference', late.refunded && late.after > plain.after,
-    `late ${late.after.toFixed(0)} vs plain ${plain.after.toFixed(0)} px/s`);
+  check('running down ledges on your feet costs nothing', plain.after >= plain.before * 0.98,
+    `${plain.before.toFixed(0)} -> ${plain.after.toFixed(0)} px/s`);
+  check('and is as quick as rolling down them', plain.after >= rolled.after * 0.97,
+    `plain ${plain.after.toFixed(0)} vs rolled ${rolled.after.toFixed(0)} px/s`);
 }
 
 // 10. a vault up gives back exactly the speed you ran in with, even if you
@@ -446,40 +442,25 @@ const WIND = Math.ceil(P.BURST_WIND * 120);   // steps from the press to the lau
   check('and neither does turning in the air', !airSkid);
 }
 
-// 21. airtime is charged on top of the drop height: taking a real fall on your
-//     feet strips most of the run, and a late roll still hands it all back.
-function feetFirst(mode) {
+// 21. a long drop taken on your feet costs nothing, and nor does a step
+function feetFirst() {
   const sim = makeSim({ x: 243, y: 27.1 }, springless());    // the low spring platform, 7 tiles up
   sim.run(12);                                 // settle
   sim.p.vx = 300;
   sim.p.flow = 0.6;
-  let before = 300, air = 0, cost = 0, landed = -1, after = 0;
-  sim.run(150, () => (mode === 'late' && sim.p.t.refund > 0 ? ['right', 'vault'] : ['right']),
-    (i, pl) => {
-      if (pl.grounded && landed < 0 && pl.airTime === 0) before = Math.abs(pl.vx);
-      air = Math.max(air, pl.airTime);
-      if (air > 0.1 && pl.grounded && landed < 0) landed = i;
-      if (landed > 0 && i === landed + 30) after = Math.abs(pl.vx);
-      cost = Math.max(cost, pl.lostSpeed);
-    });
-  return { before, air, cost, after };
+  let air = 0, landed = -1, low = Infinity, flowBefore = 0, flowAfter = 0;
+  sim.run(150, ['right'], (i, pl) => {
+    air = Math.max(air, pl.airTime);
+    if (!pl.grounded) flowBefore = pl.flow;
+    if (air > 0.1 && pl.grounded && landed < 0) { landed = i; flowAfter = pl.flow; }
+    if (landed >= 0 && i <= landed + 3) low = Math.min(low, Math.abs(pl.vx));
+  });
+  return { air, low, flowBefore, flowAfter };
 }
 {
-  const plain = feetFirst('none');
-  const late = feetFirst('late');
-  check('a long drop taken on your feet is expensive', plain.air > 0.3 && plain.cost > plain.before * 0.4,
-    `${plain.air.toFixed(2)}s of air cost ${plain.cost.toFixed(0)} of ${plain.before.toFixed(0)} px/s`);
-  check('and rolling out of it still hands the airtime back', late.after > plain.after * 1.1,
-    `late ${late.after.toFixed(0)} vs plain ${plain.after.toFixed(0)} px/s`);
-
-  const step = makeSim({ x: 65, y: 24 });      // a 1-tile step is still nearly free
-  let stepCost = 0, stepIn = 0;
-  step.run(150, ['right'], (i, pl) => {
-    if (pl.grounded) stepIn = Math.max(stepIn, Math.abs(pl.vx));
-    stepCost = Math.max(stepCost, pl.lostSpeed);
-  });
-  check('a single step down is still cheap', stepCost < stepIn * 0.12,
-    `${stepCost.toFixed(0)} of ${stepIn.toFixed(0)} px/s`);
+  const fall = feetFirst();
+  check('a long drop taken on your feet costs nothing', fall.air > 0.3 && fall.low >= 290 && fall.flowAfter >= fall.flowBefore - 0.01,
+    `${fall.air.toFixed(2)}s of air, ${fall.low.toFixed(0)} px/s on touchdown, bar ${fall.flowBefore.toFixed(2)} -> ${fall.flowAfter.toFixed(2)}`);
 }
 
 // 22. the dash has a floor under it: touching the ground does not hand it back
@@ -687,8 +668,8 @@ function feetFirst(mode) {
   check('but the ground does', sim.p.grounded && sim.p.dashes === sim.p.maxDashes);
 }
 
-// 25c. momentum: a long fall from a jump costs speed on landing unless you
-//      roll out of it, and jumps grow with speed faster than speed does
+// 25c. momentum: a long fall from a jump costs nothing on landing, and jumps
+//      grow with speed faster than speed does
 {
   // off a tall step: run, jump at the lip, and come down nine tiles lower
   const drop = () => new Level(200, 50).rect(0, 20, 30, 30).rect(30, 29, 170, 21);
@@ -701,7 +682,7 @@ function feetFirst(mode) {
       if (!jumped && sim.p.cx / TILE > 29) jumped = true;
       if (jumped && landed < 0 && (sim.p.grounded || sim.p.vy < 0)) k.push('jump');   // a full jump
       // the roll: C held into the landing and through the moment after it
-      if (roll && ((!sim.p.grounded && sim.p.vy > 300) || sim.p.t.refund > 0)) k.push('vault');
+      if (roll && !sim.p.grounded && sim.p.vy > 300) k.push('vault');
       return k;
     }, (i, pl) => {
       if (jumped && landed < 0 && !pl.grounded) before = Math.abs(pl.vx);
@@ -711,13 +692,9 @@ function feetFirst(mode) {
     });
     return { before, low, flow };
   };
-  // (held right wins raw speed back in a moment either way; what lasts is the
-  //  bar, and with it top gear)
-  const feet = land(false), rolled = land(true);
-  check('a long fall from a jump costs speed and flow landed on your feet', feet.low < feet.before * 0.75,
+  const feet = land(false);
+  check('a long fall from a jump costs nothing landed on your feet', feet.low >= feet.before * 0.95 && feet.flow >= 0.99,
     `${feet.before.toFixed(0)} -> ${feet.low.toFixed(0)} px/s on touchdown, bar ${feet.flow.toFixed(2)} after`);
-  check('and rolling out of it keeps them', rolled.low > rolled.before * 0.95 && rolled.flow > feet.flow + 0.2,
-    `${rolled.before.toFixed(0)} -> ${rolled.low.toFixed(0)} px/s rolled, bar ${rolled.flow.toFixed(2)} (on your feet ${feet.flow.toFixed(2)})`);
 
   const leap = (vx, flow) => {
     const sim = makeSim({ x: 10, y: 19 }, new Level(400, 30).rect(0, 20, 400, 10));
@@ -928,7 +905,9 @@ function feetFirst(mode) {
 
   // the five steps down are real ledges: a held roll still drops off each one
   const steps = tumble(buildTestArea(), { x: 58, y: 24 }, 64, 80, 'hold');
-  check('but a roll off a real ledge still leaves the ground', steps.rolls >= 4 && steps.air > 0,
+  // (holding C keeps the one roll going down a staircase, so how many times it
+  // is restarted varies; what matters is that it leaves the ground)
+  check('but a roll off a real ledge still leaves the ground', steps.rolls >= 1 && steps.air > 0,
     `${steps.rolls} rolls, ${steps.air} steps airborne`);
 }
 
@@ -951,12 +930,19 @@ function feetFirst(mode) {
     for (const from of starts)
       for (const phaseT of [0, 0.9, 1.8]) runs.push({ from: from.x, phaseT, ...flatOut(build, from, phaseT, route) });
     const bad = runs.filter((r) => !r.reached || r.stopped > 0.5);
-    // crystal chains are the skyline's own trick: everywhere else a crystal is
-    // a spare, so every other course is finished without the bot dashing once
-    if (name !== 'skyline') {
-      check(`${name}: finished without a single dash (crystals are only a spare here)`,
-        !(route.zones ?? []).some((z) => z.dash) && bad.length === 0);
+    // a course that does not call for a dash anywhere is finished without one:
+    // its crystals are only a spare
+    if (!(route.zones ?? []).some((z) => z.dash)) {
+      check(`${name}: finished without a single dash (crystals are only a spare here)`, bad.length === 0);
     }
+    // and never asks for a leap of faith: every landing is on screen when you
+    // commit to the jump, and stays on screen as you come down onto it. That
+    // is judged on the run from the start, where everything is met for the
+    // first time and at speed: a respawn is a second look at a section you
+    // have already played (a pad a stride past a flag throws you into a leap
+    // before the freshly snapped camera can swing out, and that is fine).
+    const blind = [...new Set(runs.filter((r) => r.from === starts[0].x).flatMap((r) => r.blind))];
+    check(`${name}: no blind falls`, blind.length === 0, blind.length ? blind.slice(0, 4).join('; ') : 'every landing in view');
     check(`${name} runs flat out from the start and from every flag`, bad.length === 0,
       bad.length ? bad.map((r) => `from ${r.from} @${r.phaseT}: ${r.reached ? `stopped ${r.stopped.toFixed(2)}s` : `stuck at tile ${r.at}`}`).join('; ')
                  : `${runs.length} runs, longest stop ${Math.max(...runs.map((r) => r.stopped)).toFixed(2)}s`);
@@ -974,7 +960,8 @@ function feetFirst(mode) {
       const z = zones[move[0]];
       const from = [...starts].reverse().find((f) => f.x < z.at[0]);
       const r = flatOut(build, from, 0, { ...route, zones: zones.filter((_, j) => !move.includes(j)) });
-      check(`${name}: the ${z.hop ? 'hop' : move.length > 1 ? 'dashes' : 'dash'} at tile ${z.at[0]} ${move.length > 1 ? 'are' : 'is'} needed`,
+      const what = z.hop ? 'hop' : z.jump ? 'jump' : z.slide ? 'slide' : move.length > 1 ? 'dashes' : 'dash';
+      check(`${name}: the ${what} at tile ${z.at[0]} ${move.length > 1 ? 'are' : 'is'} needed`,
         !r.reached, `without: ${r.reached ? 'still made it' : `stopped at tile ${r.at}`}`);
       // a crystal chain marked `exact` needs every link: one dash short fails
       if (move.length > 1 && zones[move[0]].exact) {
@@ -985,19 +972,24 @@ function feetFirst(mode) {
     }
     // `topGear` (one or a list): held to a plain sprint, one bar and no
     // overfill, from that flag on, the bot falls short. Speed is the only way.
+    // Gold is harder than an expert's run: the course bot again, chaining
+    // dashes down every straight, has to come in slower than the gold time
+    // (where it can finish at all; on a course of springs and traps it trips).
+    const lvInfo = LEVELS.find((l) => l.name === name);
+    const pro = flatOut(build, starts[0], 0, { ...route, expert: true });
+    if (pro.reached) {
+      const gold = medalTimes(lvInfo)[0].time;
+      check(`${name}: gold (${gold}s) asks for more than the expert's dashes (${pro.time.toFixed(2)}s)`, gold < pro.time);
+    }
+    // A claim is about its own stretch: the run has to come up short before
+    // the next flag, not somewhere further on.
+    const sectionEnd = (from) => starts.find((f) => f.x > from.x)?.x ?? Infinity;
     for (const { from, after } of [].concat(route.topGear ?? [])) {
       const full = flatOut(build, from, 0, route);
       const sprint = flatOut(build, from, 0, { ...route, flowCap: [after, 1] });
-      check(`${name}: the stretch from tile ${after} takes top gear, not just a sprint`, full.reached && !sprint.reached,
+      check(`${name}: the stretch from tile ${after} takes top gear, not just a sprint`,
+        full.reached && !sprint.reached && Number(sprint.at) < sectionEnd(from),
         `in top gear: ${full.reached ? 'made it' : `stopped at ${full.at}`}; on a sprint: ${sprint.reached ? 'still made it' : `stopped at ${sprint.at}`}`);
-    }
-    // `rolls` (one or a list): never rolling out of a landing from that flag
-    // on, the bot falls short. Every hard landing taken on your feet costs
-    // speed the next gap does not forgive.
-    for (const { from } of [].concat(route.rolls ?? [])) {
-      const stiff = flatOut(build, from, 0, { ...route, roll: false });
-      check(`${name}: from the flag at tile ${from.x}, the landings have to be rolled`, !stiff.reached,
-        `on its feet: ${stiff.reached ? 'still made it' : `stopped at ${stiff.at}`}`);
     }
   }
 }
@@ -1046,6 +1038,7 @@ function feetFirst(mode) {
   const bad = [];
   for (const lv of LEVELS) {
     const L = lv.build();
+    L.chase = null;                             // (this is about the wall, not the Stillness)
     let top = 0;                                // the surface of the last column
     while (top < L.h && !L.blocking(L.w - 1, top)) top++;
     const sim = makeSim({ x: L.w - 12, y: top - 1.1 }, L);
@@ -1059,6 +1052,198 @@ function feetFirst(mode) {
   }
   check('every level ends in an invisible wall, and the walk-off goes through it', bad.length === 0,
     bad.length ? bad.join('; ') : `${LEVELS.length} levels`);
+}
+
+// 35. water holds you up while you run fast and upright across it on a full
+//     bar, and only then: a jog sinks, a sprint short of a bar sinks, a slide
+//     sinks, letting go out there sinks, and a jump that comes down on it at
+//     speed runs straight on. Going under is not instant: you run (or slide)
+//     on while you sink, and drown only once your head is under, after a
+//     struggle at the surface. Reach a bank while still shallow and C pulls
+//     you out. Come down on water from a great height and you go through it,
+//     unless a dash broke the fall just before.
+{
+  const pool = (w = 30) => new Level(200, 40).rect(0, 30, 60, 10).water(60, 30, w, 6).rect(60, 36, w, 4).rect(60 + w, 30, 140 - w, 10);
+  const cross = (flow, keys, w = 30) => {
+    const sim = makeSim({ x: 10, y: 28.9 }, pool(w));
+    sim.run(3, ['right']);
+    sim.p.flow = flow; sim.p.vx = sim.p.topSpeed;
+    let on = 0, sinkAt = null, struggleAt = null, deadAt = null, waded = 0, slid = 0, sinkX = null, out = false;
+    sim.run(700, keys, (i, p) => {
+      if (flow < 1 && !p.sinking) p.flow = Math.min(p.flow, flow);
+      if (p.onWater) on++;
+      if (sinkAt === null && p.sinking) { sinkAt = i; sinkX = p.cx / TILE; }
+      if (p.sinking && !p.struggle && (p.anim.name === 'run' || p.anim.name === 'sprint')) waded++;
+      if (p.sinking && p.anim.name === 'slide') slid++;
+      if (struggleAt === null && p.struggle > 0) struggleAt = i;
+      if (deadAt === null && p.dead) deadAt = i;
+      if (sinkAt !== null && !p.sinking && !p.dead && p.grounded) out = true;
+    });
+    return { dead: sim.p.dead, cause: sim.p.deathCause, on, x: sim.p.cx / TILE, sinkAt, struggleAt, deadAt, waded,
+             slid, wadedTiles: sinkX === null ? 0 : sim.p.cx / TILE - sinkX, out };
+  };
+  const fast = cross(1.6, () => ['right']);
+  const jog = cross(0.4, () => ['right']);
+  const short = cross(0.9, () => ['right']);
+  const slide = cross(1.6, (i) => (i > 80 ? ['right', 'down'] : ['right']));
+  const stop = cross(1.6, (i) => (i < 250 ? ['right'] : []));
+  const leap = cross(1.6, (i) => (i > 70 && i < 80 ? ['right', 'jump'] : ['right']));
+  check('top gear runs across water', !fast.dead && fast.on > 60 && fast.x > 90, `${fast.on} steps on the water`);
+  check('a jog goes under', jog.dead && jog.cause === 'water');
+  check('so does a sprint short of a full bar', short.dead && short.cause === 'water' && short.sinkAt !== null);
+  check('so does a slide, however fast', slide.dead && slide.cause === 'water');
+  check('and so does letting go out there', stop.dead && stop.cause === 'water', `at tile ${stop.x.toFixed(1)}`);
+  check('a jump that comes down on it at speed runs straight on', !leap.dead && leap.x > 90);
+  check('a jog runs on while it sinks', jog.waded > 30 && jog.wadedTiles > 3,
+    `${jog.waded} steps wading, ${jog.wadedTiles.toFixed(1)} tiles covered in the water`);
+  check('and a slide slides on while it sinks', slide.slid > 10, `${slide.slid} steps sliding in the water`);
+  const fight = jog.deadAt - jog.struggleAt;
+  check('the head going under is a struggle at the surface, then a death',
+    jog.struggleAt > jog.sinkAt && Math.abs(fight - P.STRUGGLE_TIME * 120) <= 2, `${fight} steps struggling`);
+
+  // a pool six tiles across: fall in jogging, reach the far bank still shallow
+  const pull = cross(0.4, (i) => ['right', ...(i % 6 === 0 ? ['vault'] : [])], 6);
+  const late = cross(0.4, () => ['right'], 6);
+  check('reach a bank while shallow and C pulls you out', pull.out && !pull.dead, `out: ${pull.out}, at tile ${pull.x.toFixed(1)}`);
+  check('without it, the bank is a wall and you drown against it', late.dead && late.cause === 'water');
+
+  // a cliff twelve rows over a lake
+  const cliff = () => new Level(200, 40).rect(0, 18, 60, 22).water(60, 30, 100, 6).rect(60, 36, 100, 4).rect(160, 30, 40, 10);
+  const drop = (dashAbove) => {
+    const sim = makeSim({ x: 40, y: 16.9 }, cliff());
+    sim.run(3, ['right']);
+    sim.p.flow = 1.6; sim.p.vx = sim.p.topSpeed;
+    let dashed = false;
+    sim.run(500, (i) => {
+      const p = sim.p;
+      if (dashAbove !== null && !dashed && !p.grounded && p.vy > 0 && p.footY > (30 - dashAbove) * TILE) { dashed = true; return ['right', 'dash']; }
+      return ['right'];
+    });
+    return { dead: sim.p.dead, cause: sim.p.deathCause, x: sim.p.cx / TILE };
+  };
+  const plunge = drop(null), dashed = drop(2), early = drop(11);
+  check('off a great height, top gear goes straight through the water', plunge.dead && plunge.cause === 'water');
+  check('unless a dash breaks the fall just before it', !dashed.dead && dashed.x > 120, `got to tile ${dashed.x.toFixed(0)}`);
+  check('(a dash high up does not: it is the last of the fall that counts)', early.dead && early.cause === 'water');
+}
+
+// 36. the Stillness waits for you to move, then comes on and never stops: hold
+//     your speed and it never catches you, stand still a moment and it does.
+{
+  const lv = LEVELS.find((l) => l.id === 'stillness');
+  const route = ROUTES[lv.id];
+  const idle = makeSim(route.starts[0], lv.build());
+  const x0 = idle.level.chase.x;
+  idle.run(240);
+  check('the Stillness waits for you to move', idle.level.chase.x === x0 && !idle.p.dead);
+  const clean = flatOut(lv.build, route.starts[1], 0, route);
+  // (a full second's stop is survived by a hair: a second and a half is not)
+  const balk = flatOut(lv.build, route.starts[1], 0, { ...route, pause: [700, 180] });
+  check('hold your speed and it never catches you', clean.reached, `closest ${clean.chaseMin.toFixed(1)} tiles`);
+  check('a second and a half given away, and it has you', !balk.reached && balk.death === 'still', `died: ${balk.death} at tile ${balk.at}`);
+}
+
+// 37. a slope is the place to go faster than you can run: running down one
+//     gives a little, and a roll (C, tapped or held) runs away down it, well
+//     past top gear, without leaving the slope, and you keep the speed off
+//     the bottom for a while.
+{
+  const ramp = () => new Level(400, 80).rect(0, 20, 60, 60).ramp(60, 35, 16, -1, 79).rect(76, 36, 324, 44);
+  const down = (mode) => {
+    const sim = makeSim({ x: 30, y: 18.9 }, ramp());
+    sim.run(5, ['right']);
+    sim.p.flow = 1.6; sim.p.vx = 410;
+    let bottom = null, after = null, air = 0;
+    sim.run(400, () => {
+      const x = sim.p.cx / TILE;
+      if (mode === 'tap' && x > 60.5 && x < 61.5) return ['right', 'vault'];
+      if (mode === 'hold' && x > 59) return ['right', 'vault'];
+      return ['right'];
+    }, (i, p) => {
+      const x = p.cx / TILE;
+      if (x > 61 && x < 75 && !p.grounded) air++;
+      if (bottom === null && x >= 76) bottom = Math.abs(p.vx);
+      if (after === null && x >= 86) after = Math.abs(p.vx);
+    });
+    return { bottom, after, air };
+  };
+  const run = down('run'), tap = down('tap'), hold = down('hold');
+  check('running down a slope gives a little speed', run.bottom > 430,
+    `${run.bottom.toFixed(0)} px/s at the bottom of a 16-tile slope from 410`);
+  check('a roll down it gives more', tap.bottom > run.bottom * 1.1 && hold.bottom > run.bottom * 1.1,
+    `tapped ${tap.bottom.toFixed(0)}, held ${hold.bottom.toFixed(0)} px/s against ${run.bottom.toFixed(0)} running`);
+  check('and never leaves the slope doing it', tap.air === 0 && hold.air === 0, `${tap.air + hold.air} steps airborne`);
+  check('and the speed carries on off the bottom', tap.after > run.after + 50,
+    `ten tiles on: ${tap.after.toFixed(0)} rolled, ${run.after.toFixed(0)} run`);
+}
+
+// 38. ice will not let you stop: let go on it at a sprint and you glide on a
+//     long way, holding the bar, where rock stops you in a step or two. It
+//     takes longer to turn round on, and longer to get going.
+{
+  const flat = (icy) => { const L = new Level(300, 40).rect(0, 30, 300, 10); if (icy) L.ice(0, 30, 300); return L; };
+  const letGo = (icy) => {
+    const sim = makeSim({ x: 10, y: 28.9 }, flat(icy));
+    sim.run(3, ['right']);
+    sim.p.flow = 1.2; sim.p.vx = sim.p.topSpeed;
+    sim.run(30, ['right']);
+    const x0 = sim.p.cx, f0 = sim.p.flow;
+    let glide = 0;
+    sim.run(240, [], (i, p) => { if (p.anim.name === 'glide') glide++; });
+    return { dist: (sim.p.cx - x0) / TILE, flow: sim.p.flow, f0, glide, vx: sim.p.vx };
+  };
+  const turn = (icy) => {
+    const sim = makeSim({ x: 100, y: 28.9 }, flat(icy));
+    sim.run(20, ['right']);                    // (on the ground first: a turn in the air is no test)
+    sim.p.flow = 1; sim.p.vx = 300;
+    let n = 0;
+    sim.run(400, () => { if (sim.p.vx > 0) n++; return ['left']; });
+    return n;
+  };
+  const start = (icy) => {
+    const sim = makeSim({ x: 10, y: 28.9 }, flat(icy));
+    let n = 0;
+    sim.run(400, () => { if (Math.abs(sim.p.vx) < 180) n++; return ['right']; });
+    return n;
+  };
+  const ice = letGo(true), rock = letGo(false);
+  check('let go on ice and you glide on', ice.dist > 15 && rock.dist < 3,
+    `${ice.dist.toFixed(1)} tiles on ice, ${rock.dist.toFixed(1)} on rock`);
+  check('... in a glide, keeping the bar', ice.glide > 100 && ice.flow >= ice.f0 - 0.01,
+    `${ice.glide} steps gliding, bar ${ice.f0.toFixed(2)} -> ${ice.flow.toFixed(2)}`);
+  const ti = turn(true), tr = turn(false);
+  check('turning round on ice takes far longer', ti > tr * 2, `${ti} steps to turn round on ice, ${tr} on rock`);
+  const si = start(true), sr = start(false);
+  check('and so does getting going', si > sr, `${si} steps to a run on ice, ${sr} on rock`);
+}
+
+// 39. glitches that stay fixed. A vault called just after a dash pays out
+//     the run the dash hands off, not the dash's own pace (it paid 560, and
+//     after a burst dash 1000). And wading is no shelter from a reef's spikes.
+{
+  const lip = () => new Level(200, 40).rect(0, 30, 200, 10).rect(60, 28, 140, 2);
+  const sim = makeSim({ x: 10, y: 28.9 }, lip());
+  sim.run(20, ['right']);
+  sim.p.flow = 1; sim.p.vx = 330;
+  let after = 0, dashed = false;
+  sim.run(300, () => {
+    const x = sim.p.cx / TILE;
+    if (!dashed && x > 52) { dashed = true; return ['right', 'dash']; }
+    return x > 54 ? ['right', 'vault'] : ['right'];
+  }, (i, p) => { if (dashed && !p.dashing) after = Math.max(after, Math.abs(p.vx)); });
+  // (the old memory paid out 557 here; the run it should pay is about 420)
+  check('a vault straight after a dash keeps the run, not the dash', sim.p.vaults > 0 && after < 480,
+    `${sim.p.vaults} vaults, ${after.toFixed(0)} px/s at most after the dash`);
+
+  const reef = () => new Level(200, 40).rect(0, 30, 60, 10).water(60, 30, 30, 6).rect(60, 36, 30, 4)
+    .rect(65, 31, 4, 5).spikes(65, 30, 4).rect(90, 30, 110, 10);
+  const wade = makeSim({ x: 10, y: 28.9 }, reef());
+  wade.run(3, ['right']);
+  wade.p.flow = 0.4; wade.p.vx = wade.p.topSpeed;
+  let waded = false;
+  wade.run(800, ['right'], (i, p) => { if (!p.dead) p.flow = Math.min(p.flow, 0.4); if (p.sinking) waded = true; });
+  check('wading into a reef is the spikes, not a way through them',
+    waded && wade.p.dead && wade.p.deathCause !== 'water', `died: ${wade.p.deathCause ?? 'spikes'} at tile ${(wade.p.cx / TILE).toFixed(1)}`);
 }
 
 print(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURE(S)`);

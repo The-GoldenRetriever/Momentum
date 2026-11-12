@@ -13,14 +13,9 @@ import { Menus } from './menus.js';
 import { sfx } from './audio.js';
 import { WALK_SPEED, WALK_MAX, OFF_EDGE, FADE_TIME, LOAD_TIME, drawLetterbox, drawFade, drawLoading } from './cutscene.js';
 
-const RESULTS_DELAY = 0.8;        // let the goal burst play before the panel covers it
-const bestKey = (lv) => `momentum.best.${lv.id}`;
-const LAST_KEY = 'momentum.last';
+import { store, LAST_KEY, migrateSave, bestTime, setBest, lastUnlocked } from './save.js';
 
-const store = {
-  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
-};
+const RESULTS_DELAY = 0.8;        // let the goal burst play before the panel covers it
 
 // what the player is fed while a panel is up: nothing held, nothing pressed
 const IDLE = { held: () => false, hit: () => false, let_go: () => false, moveX: 0, moveY: 0 };
@@ -46,13 +41,18 @@ export class Game {
 
     // ?level=<n> (1-based) picks the level; ?at=<tile x>[&ay=<tile y>] then
     // drops you straight into a section of it — handy for testing
+    // (an old save has its times wiped, once: see save.js)
+    migrateSave();
     const q = new URLSearchParams(location.search);
-    const last = Number(store.get(LAST_KEY)) || 0;
+    // The menus open on the last level you started, if it is still open to
+    // you. ?level= is for testing, and goes anywhere.
+    const last = Math.min(Number(store.get(LAST_KEY)) || 0, lastUnlocked());
     const n = clamp(Math.floor(Number(q.get('level') ?? (menus ? last + 1 : 1))) - 1 || 0, 0, LEVELS.length - 1);
     this.load(n);
     if (q.has('at')) {
       this.level.spawn = { x: Number(q.get('at')) * TILE, y: (Number(q.get('ay') ?? 26)) * TILE };
       this.spawnPoint = { ...this.level.spawn };
+      resetMechanics(this.level, this.spawnPoint.x);
       this.player.reset(this.level.spawn.x, this.level.spawn.y);
       this.cam.snapTo(this.player.cx, this.player.cy);
     }
@@ -65,11 +65,10 @@ export class Game {
 
   /** Start level `n` from the top, from a menu. */
   start(n) {
-    this.load(n);
+    // through the loading card, the same as arriving from the level before
+    // (the level is built behind it: see #cutsceneStep)
     this.ui.close();
-    this.playing = true;
-    this.fade = 1;
-    store.set(LAST_KEY, String(n));
+    this.cutscene = { phase: 'load', t: 0, loaded: false, next: n };
   }
 
   /** From the results panel: walk off, load behind a black screen, go. */
@@ -143,7 +142,7 @@ export class Game {
     this.activeSign = null;
     this.resultsIn = 0;
     this.newBest = false;
-    this.best = Number(store.get(bestKey(this.levelInfo))) || 0;
+    this.best = bestTime(this.levelInfo);
     this.#say(`LEVEL ${n + 1}`, `${this.levelInfo.name} \u2014 move to start`, 3.2);
   }
 
@@ -204,7 +203,7 @@ export class Game {
 
     if (p.dead && p.deadTimer <= 0) this.respawn();
 
-    if (!p.dead) {
+    if (!p.dead && !p.sinking) {
       this.#pickups();
       this.#signs();
       this.#speedFx(dt);
@@ -270,7 +269,7 @@ export class Game {
 
   #drawFrame(dt, realDt) {
     const cs = this.cutscene;
-    if (cs && cs.phase === 'load') { drawLoading(this.ctx, cs.t); return; }
+    if (cs && cs.phase === 'load') { drawLoading(this.ctx, cs.t, cs.next, LEVELS[cs.next]); return; }
     if (cs) {                     // the walk-off: the world, bars, and a fade out
       this.renderer.hideActors = false;
       this.renderer.draw(this, dt, realDt);
@@ -317,7 +316,7 @@ export class Game {
       this.newBest = !this.best || this.time < this.best;
       if (this.newBest) {
         this.best = this.time;
-        store.set(bestKey(this.levelInfo), String(this.time));
+        setBest(this.levelInfo, this.time);
       }
       this.resultsIn = RESULTS_DELAY;
       // (without menus, as in the frame grabber, the banner is all there is)
@@ -358,7 +357,7 @@ export class Game {
   // ------------------------------------------------------------- lifecycle
   respawn() {
     const p = this.player;
-    resetMechanics(this.level);
+    resetMechanics(this.level, this.spawnPoint.x);
     p.reset(this.spawnPoint.x, this.spawnPoint.y);
     this.renderer.scarf = null;
     this.cam.snapTo(p.cx, p.cy);

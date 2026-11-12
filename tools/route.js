@@ -7,14 +7,14 @@ import { LEVELS } from '../src/levels/index.js';
 import { flatOut } from './harness.js';
 import { ROUTES } from './routes.js';
 
-const [n = '1', fx = '4', fy = '24', cap, how] = arguments;   // `stiff` as a fifth: never roll
+const [n = '1', fx = '4', fy = '24', cap, mode] = arguments;   // `expert` as a fifth: dash the straights
 const lv = LEVELS[Number(n) - 1];
 const route = ROUTES[lv.id] ?? {};
 let up = null;
 const r = flatOut(lv.build, { x: Number(fx), y: Number(fy) }, 0, {
   ...route,
   flowCap: cap === undefined || cap === '-' ? null : [0, Number(cap)],
-  roll: how !== 'stiff',
+  expert: mode === 'expert',
   onJump: (e) => {
     if (e.up) { up = e; return; }
     const from = up ? `${up.x.toFixed(1)} (${Math.round(Math.abs(up.vx))} px/s, bar ${up.flow.toFixed(2)})` : 'start';
@@ -22,4 +22,7 @@ const r = flatOut(lv.build, { x: Number(fx), y: Number(fy) }, 0, {
     up = null;
   },
 });
+if (r.blind.length) print(`BLIND: ${r.blind.join('; ')}`);
+if (r.chaseMin < Infinity) print(`the Stillness came within ${r.chaseMin.toFixed(1)} tiles`);
+if (r.death) print(`died: ${r.death}`);
 print(r.reached ? `REACHED the goal in ${r.time.toFixed(2)}s (stopped ${r.stopped.toFixed(2)}s)` : `FAILED at tile ${r.at}`);

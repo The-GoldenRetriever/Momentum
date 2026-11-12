@@ -38,6 +38,22 @@ export class Fx {
     }
   }
 
+  /** Water thrown up off a skimmer's heels: a plume that arcs up and back. */
+  spray(x, y, dir, speed) {
+    const n = 2 + (Math.random() < 0.5 ? 1 : 0);
+    for (let i = 0; i < n; i++) {
+      const r = Math.random();
+      this.#add({
+        x: x + (Math.random() - 0.5) * 4, y: y - 1,
+        vx: dir * (30 + Math.random() * speed * 0.35),
+        vy: -(60 + Math.random() * (90 + speed * 0.35)),
+        life: 0.25 + Math.random() * 0.3, max: 0.55,
+        size: r < 0.35 ? 2 : 1,
+        colour: r < 0.3 ? '#ffffff' : r < 0.7 ? '#bfeaff' : '#7fc8ef', grav: 620,
+      });
+    }
+  }
+
   sparkle(x, y, colour = '#ffe6a8') {
     this.#add({
       x, y, vx: (Math.random() - 0.5) * 20, vy: -20 - Math.random() * 20,

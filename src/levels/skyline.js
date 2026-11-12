@@ -1,4 +1,4 @@
-// skyline.js — level 4, and the hardest. Islands of rock in a dusk sky with
+// skyline.js — level 4. Islands of rock in a dusk sky with
 // nothing at all beneath them: every gap is a fall out of the world. The
 // islands are small (too small to stop on) and far apart, so the whole level
 // is one long run of leaps taken at speed: sand islands that crumble under
@@ -57,7 +57,7 @@ export function buildSkyline() {
     'Sand gives way. Under a fanged rock, hop low.',
     'And the crystals: out here they are the only footholds.',
   ]);
-  L.boost(14, S, 3, +1);
+  L.boost(12, S, 3, +1);                   // (early enough for the camera to make room for the leap)
   island(38, 44);
   L.crumble(59, S, 6);                     // sand: there is no standing on it
   island(80, 86);

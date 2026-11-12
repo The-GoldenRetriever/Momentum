@@ -63,12 +63,13 @@ if (q.has('next')) {
   const idle = new Keys();
   for (let i = 0; i < Number(q.get('next')); i++) game.update(1 / 120, idle, 1 / 120);
 }
-// &screen=title|select|pause|results[&sel=<row>] grabs one of the menus
+// &screen=title|select|pause|results[&sel=<row>][&t=<s>] grabs one of the menus
 const scr = q.get('screen');
 if (scr === 'title') game.toTitle();
 else if (scr === 'results') { game.finished = true; game.time = 63.42; game.best = 58.1; game.ui.show('results'); }
 else if (scr) { if (scr === 'select') game.playing = false; game.ui.show(scr); }
 if (scr && q.has('sel')) game.ui.sel = Number(q.get('sel'));
+if (scr && q.has('t')) game.ui.t = Number(q.get('t'));   // (for anything that fades in)
 if (scr && scr !== 'pause' && scr !== 'results') game.draw(1 / 150, 1 / 60);   // let the pan settle
 // &menu=open|capture[&sel=<row>] grabs the binding screen over the frame
 const menuArg = q.get('menu');

@@ -1,100 +1,123 @@
-// furnace.js — level 7, the last and the hardest: everything the momentum
-// courses ask, in one run, deep where the rock runs hot. It opens with falls
-// into the cavern that have to be rolled, then the roof comes down: under it
-// every jump is cut short, so how far you carry is down to how fast you are
-// running, and only top gear clears the gaps. Then a crawl with fangs in the
-// roof (hop low), and a vent so low you slide it, over holes that only a fast
-// slide skims. No boost pads, and every flag is a long run-up from an empty
-// bar: lose your momentum and the furnace takes it from there.
+// furnace.js — level 9, the last and the hardest: under the roof, deep where
+// the rock runs hot, with the stillness right behind you. Almost the whole way there is rock a few tiles over
+// your head, and a jump that meets it is cut short, so how far you carry is
+// down to how fast you are running and nothing else: the gaps are measured
+// for top gear under each height of roof, and the roof keeps changing, so
+// you have to read it as well as the gap. Where the roof has fangs a jump
+// that touches it is a death (hop low), the vents are so low you slide them,
+// over holes only a fast slide skims, and the floors crumble. And the
+// stillness chases you the whole way (see mechanics.js): it comes on at a
+// little under top gear the whole way, so nothing may cost you a moment. No
+// boost pads, and every flag is a long run-up from an empty bar.
+//
+// Gaps by headroom (tools/route.js prints where the jumps land): under four
+// tiles a top-gear jump carries about nine past the edge and a sprint about
+// seven and a half; under five, twelve against ten; under six, sixteen against
+// thirteen. Every stretch has gaps a sprint falls into.
 
 import { Level, T, TILE } from '../level.js';
 
-const W = 590;           // (with a run-out past the goal for the walk-off)
-const H = 52;
-const DROP = 8;          // rows between one cliff and the next, in the falls
-const FALL_GAP = 20;     // where a top-gear jump off one comes down on the next
+const H = 44;
+const FLOOR = 32;        // the surface row (the furnace floor is far below)
+
+// The stillness chasing you here comes on at a
+// little under top gear, and never more than twenty-two tiles back: a vent's
+// drag on your slide brings it within a third of a second of you.
+export const FURNACE_STILLNESS = 375;
 
 export function buildFurnace() {
-  const L = new Level(W, H);
+  const w = course(new Level(1000, H));
+  const L = new Level(w, H);
+  course(L);
+  L.stillness(FURNACE_STILLNESS, 16, 22);
+  return L;
+}
+
+function course(L) {
   L.theme = 'ember';
-  // rock from row `y` down to the furnace floor
-  const ground = (x0, x1, y) => L.rect(x0, y, x1 - x0, H - 3 - y);
-  // the roof coming down so `rows` tiles are left over a floor at `y`
-  const roof = (x0, x1, y, rows) => L.rect(x0, 1, x1 - x0, y - rows - 1);
-  // a fanged stretch of a four-tile roof: the spikes take its bottom row, so
-  // a quick hop still clears them and a full jump does not
-  const fangs = (x0, w, y) => L.spikes(x0, y - 5, w, 'down');
+  L.marks = { flags: [], hops: [], runups: [], zones: [], tunnels: [] };
+  const y = FLOOR;
+  // rock from the surface down to the spiked furnace floor
+  const ground = (x0, x1) => L.rect(x0, y, x1 - x0, H - 3 - y);
+  // the roof over [x0, x1) with `room` tiles of headroom (null: the cave's
+  // own roof, far overhead)
+  const roof = (x0, x1, room) => { if (room) L.rect(x0, 1, x1 - x0, y - room - 1); };
 
-  // ---- world shell: a wall, a roof, and a spiked floor under everything ---
+  let x = 2, room = null;
+  const run = (n) => { ground(x, x + n); roof(x, x + n, room); x += n; };
+  const gap = (g, n) => { roof(x, x + g, room); x += g; run(n); };
+  const sand = (g, n) => { roof(x, x + g + n, room); x += g; L.crumble(x, y, n); x += n; };
+  // fangs: the roof's bottom row over a gap, and the stride either side of it,
+  // turned to spikes. A low hop still clears them; a full jump does not.
+  const fangGap = (g, n) => {
+    const x0 = x;
+    L.marks.hops.push(x0);
+    gap(g, n);
+    L.spikes(x0 - 2, y - room - 1, g + 4, 'down');     // (after the roof it replaces)
+  };
+  // a vent: a slot so low only a slide fits, `n` long, over holes two tiles
+  // wide every six. The course bot slides it (a tunnel in its route).
+  const vent = (n) => {
+    ground(x, x + n);
+    L.rect(x, 1, n, y - 2);
+    L.rect(x, y - 1, n, 1, T.LOWCEIL);
+    for (let hx = x + 6; hx < x + n - 2; hx += 6) L.rect(hx, y, 2, H - 3 - y, T.EMPTY);
+    L.marks.tunnels.push([x, x + n]);
+    x += n;
+  };
+  const flag = (title, line) => {
+    L.checkpoint(x + 4, y);
+    L.sign(x + 7, y - 1, title, [line]);
+    L.marks.flags.push({ x: x + 4, y });
+  };
+  const runup = (n) => { run(n); L.marks.runups.push(x); };
+
+  // ---- the shell: a wall behind you, the cave roof, a spiked floor below ----
   L.rect(0, 0, 2, H);
-  L.rect(0, 0, W, 1);
-  L.rect(0, H - 2, W, 2);
-  L.spikes(2, H - 3, W - 2);
+  L.rect(0, 0, 1000, 1);
+  L.rect(0, H - 2, 1000, 2);
+  L.spikes(2, H - 3, 998);
 
-  // ================================================== A — the falls
-  let y = 12;
-  ground(2, 62, y);
+  // ================================================ A — the low road
   L.spawn = { x: 4 * TILE, y: (y - 2) * TILE };
   L.sign(5, y - 1, 'FURNACE', [
-    'Everything at once. Roll the falls, then the roof comes',
-    'down and only speed carries a jump. Hop the fangs, slide',
-    'the vent. Every flag is a long run from an empty bar:',
-    'keep your momentum, because getting it back is the hard part.',
+    'The roof is low and keeps changing: a jump that meets it',
+    'is cut short, so only speed carries you. Fangs in the roof:',
+    'hop low. Vents: slide them fast. And the stillness is',
+    'behind you the whole way: do not stop. Not once.',
   ]);
-  let x = 62;
-  for (let i = 0; i < 3; i++) { x += FALL_GAP; y += DROP; ground(x, x + 7, y); x += 7; }
+  runup(60);
+  room = 6; run(4);
+  gap(14, 7);
+  room = 5; gap(10, 6); sand(10, 6);
+  room = 4; gap(8, 5); gap(8, 5);
+  room = 6; gap(14, 10);
+  room = null; vent(30); run(8);
 
-  // ================================================== B — the low road
-  // The roof comes down to five tiles. A jump under it hits it and is cut
-  // short, so its length is all speed: top gear clears these, a sprint does not.
-  const b = x - 7;
-  ground(b, b + 60, y);
-  L.checkpoint(b + 8, y);
-  L.sign(b + 11, y - 1, 'LOW ROAD', ['The roof cuts every jump short. Only speed carries you.']);
-  x = b + 60;
-  roof(x - 4, x + 4 * 17 + 4, y, 5);
-  for (let i = 0; i < 4; i++) {
-    x += 11;
-    if (i % 2) L.crumble(x, y, 6); else ground(x, x + 6, y);
-    x += 6;
-  }
+  // ================================================ B — the crawl
+  flag('CRAWL', 'Four tiles of room. Hop where the roof has fangs.');
+  runup(56);
+  room = 4; run(4);
+  gap(8, 5); fangGap(8, 5); sand(8, 5); fangGap(8, 5); gap(8, 5); sand(8, 5); fangGap(8, 6);
+  room = null; run(4);
 
-  // ================================================== C — the crawl
-  // Down to four tiles, and fangs in it over every other gap.
-  const c = x + 11;
-  ground(c, c + 60, y);
-  L.checkpoint(c + 8, y);
-  L.sign(c + 11, y - 1, 'CRAWL', ['Four tiles of room. Hop low where the roof has fangs.']);
-  x = c + 60;
-  roof(x - 4, x + 5 * 13 + 4, y, 4);
-  for (let i = 0; i < 5; i++) {
-    if (i % 2) fangs(x - 1, 9, y);
-    x += 8;
-    ground(x, x + 5, y);
-    x += 5;
-  }
+  // ================================================ C — the vents
+  flag('VENTS', 'Slide in at top gear and do not stand up.');
+  runup(56);
+  vent(36); run(6);
+  room = 5; gap(10, 6);
+  room = null; vent(30); run(6);
+  room = 6; gap(14, 6); sand(14, 6);
+  room = null; run(4);
 
-  // ================================================== D — the vent
-  // A slot so low only a slide fits, over holes two tiles wide: slide in at
-  // top gear and you skim them, any slower and you drop in. Then two last
-  // leaps under the low roof to the goal.
-  const d = x + 8;
-  ground(d, d + 60, y);
-  L.checkpoint(d + 8, y);
-  L.sign(d + 11, y - 1, 'VENT', ['Slide it fast, or the holes have you.']);
-  x = d + 60;
-  ground(x, x + 36, y);
-  L.rect(x, 1, 36, y - 2);
-  L.rect(x, y - 1, 36, 1, T.LOWCEIL);
-  for (let hx = x + 6; hx < x + 34; hx += 6) L.rect(hx, y, 2, H - 3 - y, T.EMPTY);
-  x += 36;
-  roof(x, W, y, 5);
-  ground(x, x + 8, y);                     // a stride to get up out of the slide
-  x += 8;
-  for (let i = 0; i < 2; i++) { x += 11; ground(x, x + 6, y); x += 6; }
-  ground(x + 11, W, y);
-  L.goal = { x: (x + 18) * TILE, y: (y - 4) * TILE, w: TILE * 2, h: TILE * 4, hit: false };
-  if (x + 11 + 30 > W) throw new Error(`furnace: widen W to ${x + 11 + 30}`);
-
-  return L;
+  // ================================================ D — the bellows
+  flag('BELLOWS', 'Six, five, four: the roof comes down on you. Keep top gear.');
+  runup(56);
+  room = 6; run(4); gap(14, 6);
+  room = 5; gap(10, 5); fangGap(10, 5);
+  room = 4; gap(8, 5); sand(8, 5); fangGap(8, 5);
+  room = 5; gap(10, 5); sand(10, 5);
+  room = 6; gap(14, 34);
+  L.goal = { x: (x - 22) * TILE, y: (y - 4) * TILE, w: TILE * 2, h: TILE * 4, hit: false };
+  return x;
 }

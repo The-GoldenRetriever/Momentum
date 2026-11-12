@@ -4,6 +4,9 @@
 //   * speed is earned slowly and lost reluctantly (the "flow" meter)
 //   * nothing that costs speed happens without the player asking for it
 //   * tiny bumps never interrupt a run; anything taller is a vault you call
+//   * coming down is free: a fall, a drop or a hard landing never costs you
+//     anything
+//   * a slope is the one place to go faster than you can run: roll down it
 
 import { TILE, T, clamp } from './level.js';
 import { FRAME_COUNT } from './art.js';
@@ -96,23 +99,12 @@ export const P = {
   DROP_MIN: 11,              // ledges shorter than this you simply run off
   DROP_MAX: 52,
   ROLL_TIME: 0.26,
-  ROLL_REFUND: 0.20,         // roll this soon after a scuffed drop and it is undone
-  ROLL_FREE: 0.60,           // a called roll rides out the whole drop untaxed
-
-  LEDGE_MIN_DROP: 9,         // anything shallower costs nothing
-  LEDGE_LOSS: 0.30,          // fraction of your speed an uncalled drop eats
-  LEDGE_FULL_DROP: 44,       // ... reaching that fraction at this height
-  LEDGE_AIR_FREE: 0.14,      // airtime you can stumble through for nothing
-  LEDGE_AIR_FULL: 0.60,      // ... and where the airtime tax tops out
-  LEDGE_AIR_LOSS: 0.34,      // extra fraction a long drop on your feet eats
-  LEDGE_LOSS_MAX: 0.60,      // no single fumbled landing takes more than this
-  LAND_FREE: 80,             // a jump coming down more than this from its peak
-  LAND_FULL: 220,            // ... costs speed, reaching LAND_LOSS by here,
-  LAND_LOSS: 0.40,           // unless you roll out of it (C on landing)
-  LAND_FLOW_LOSS: 0.60,      // share of the bar a full-price fumble (a hard
-                             // landing or a drop, on your feet) takes with it.
-                             // The speed itself comes back in a stride; the bar
-                             // does not, and top gear goes with it
+  ROLL_FREE: 0.60,           // a called roll tucks you through the whole drop
+  ROLL_DOWNHILL: 520,        // px/s per second a roll down a slope adds, on top
+                             // of what running down it does: no drag, no brakes
+  ROLL_MAX: 530,             // ... up to this: past top gear, but not so far
+                             // past it that a slope outruns everything else
+  ROLL_OFF: 0.15,            // off the slope this long and the roll is over
 
   // --- burst: spend a full flow bar on bullet time -----------------------
   BURST_SPEED: 560,          // SPEED x SCALE is what you see on screen
@@ -139,6 +131,31 @@ export const P = {
   SKID_TAIL: 0.10,           // the brace holds this long after you stop fighting it
 
   SPRING_V: 700,
+
+  // --- water --------------------------------------------------------------
+  WATER_SKIM: 280,           // run on water at this, upright: under it, or
+                             // sliding, or ducked, and you go through it
+  WATER_FLOW: 1,             // ... and only on a full bar: speed alone (a pad,
+                             // a slope, a dash) is not enough without the flow
+  WATER_HIGH: 160,           // px fallen (from the top of the arc, or from the
+                             // end of a dash) past which water is no floor: a
+                             // dash just before the surface breaks the fall.
+                             // Ten tiles: a top-gear leap off a ledge four rows
+                             // up (overpass) still lands, a real drop does not
+  SINK_SPEED: 14,            // px/s: how fast you settle while you wade
+  WADE_MAX: 110,             // a run in the water: momentum past this drains off
+  WADE_DRAG: 3,              // ... at this rate (per second, of the excess)
+  PULL_DEPTH: 12,            // feet no deeper than this below the bank's top
+                             // and C pulls you out (see #lipAhead)
+  DROWN_DEPTH: 15,           // feet this deep and your head is under: it is over
+  STRUGGLE_TIME: 0.75,       // ... after this long fighting at the surface
+  STRUGGLE_UNDER: 0.2,       // the last of which is going under for good
+
+  // --- ice ------------------------------------------------------------------
+  ICE_FRICTION: 70,          // let go on ice and you glide on (FRICTION is 2300)
+  ICE_GRIP: 0.55,            // the feet spin: building speed takes longer
+  ICE_TURN: 0.3,             // ... and turning round takes far longer
+  ICE_SLIDE: 0.35,           // a slide on ice runs much further
 };
 
 const smooth = (a) => a * a * (3 - 2 * a);
@@ -163,6 +180,12 @@ export class Player {
     this.crouching = false;
     this.dead = false;
     this.deadTimer = 0;
+    this.sinking = false;      // through the water's surface, wading down (see #sink)
+    this.struggle = 0;         // ... and how long is left fighting it at the surface
+    this.sinkSurface = 0;
+    this.airTop = y + P.H;     // the highest the feet have been since solid footing
+    this.onIce = false;        // standing on ice (Level.iceUnder), as of the last step
+    this.gliding = false;      // on ice with the stick let go: carried along
     this.dashes = 1;
     this.maxDashes = 1;
     this.flow = 0;
@@ -170,8 +193,8 @@ export class Player {
     this.t = {
       coyote: 0, buffer: 0, dash: 0, dashCool: 0, dashBuf: 0, refill: 0, super: 0,
       wallCoyote: 0, wallLock: 0, noSnap: 0, stepFx: 0, land: 0, drop: 0,
-      mantle: 0, bump: 0, cue: 0, vaultFx: 0, vaultBuf: 0, refund: 0, rollFree: 0,
-      burstReady: 0, skid: 0, skidFx: 0, ghost: 0,
+      mantle: 0, bump: 0, cue: 0, vaultFx: 0, vaultBuf: 0, rollFree: 0,
+      burstReady: 0, skid: 0, skidFx: 0, ghost: 0, rollOff: 0,
     };
     this.dashDir = { x: 1, y: 0 };
     this.dashSpeed = P.DASH_SPEED;
@@ -181,27 +204,25 @@ export class Player {
     this.vault = null;         // the vault currently being played out
     this.cue = null;           // the vault the player could call for right now
     this.vaults = 0;
-    this.rolling = 0;          // cosmetic roll (the recovery one keeps you moving)
+    this.rolling = 0;          // the roll animation's clock
+    this.slopeRoll = false;    // tucked and rolling down a slope (see #slopeRollStep)
     this.bursting = false;     // full-flow sprint: very fast, world in slow motion
     this.burstWind = 0;        // armed: counting down the beat before it fires
     this.burstDir = 1;
     this.bursts = 0;
     this.skidDir = 1;          // the way a skid is turning towards
     this.recentSpeed = 0;      // the speed you had a moment ago, for vault payouts
+    this.recentDir = 1;        // ... and which way it was going: it pays out only that way
     this.recentFlow = 0;
     this.fallFrom = null;      // foot height when we walked off an edge
-    this.lostSpeed = 0;        // banked by a scuffed drop, refunded by a late roll
-    this.lostFlow = 0;
     this.airTime = 0;          // how long you have been off the ground
-    this.airPeak = null;       // highest the feet got this time in the air: a
-                               // respawn must not inherit the peak of a fatal jump
     this.footfall = false;     // a stride just planted a boot — one frame only
   }
 
   /** Cashable? True while you are at a full-bar sprint, and for a moment after
    *  you drop off it — getting clipped on the way in should not eat the burst. */
   get canBurst() {
-    return !this.bursting && this.burstWind <= 0 && !this.dead && !this.vault &&
+    return !this.bursting && this.burstWind <= 0 && !this.dead && !this.sinking && !this.vault &&
            this.t.burstReady > 0;
   }
 
@@ -226,9 +247,208 @@ export class Player {
   get speed() { return Math.abs(this.vx); }
   get sprinting() { return this.speed > P.RUN_BASE * 0.92; }
 
-  kill() {
+  /** The slope underfoot runs downhill the way you are going (+1/-1), or 0. */
+  #downhill() {
+    if (!this.grounded) return 0;
+    const slope = this.level.slopeUnder(this.cx, this.footY);
+    if (!slope) return 0;
+    const down = slope === T.SLOPE_L ? 1 : -1;        // "\" descends towards +x
+    const dir = Math.sign(this.vx) || this.facing;
+    return dir === down ? down : 0;
+  }
+
+  /** On a downhill and not rolling yet: the prompt for a slope roll. */
+  get rollHere() { return !this.slopeRoll && !this.vault && this.#downhill() !== 0; }
+
+  /** The slope roll: C on a downhill (pressed or held, or called at the top of
+   *  one) tucks you into a roll that runs away down it, much faster than your
+   *  legs could, and you keep that speed off the bottom (it bleeds away the
+   *  way any overspeed does). It lasts until the slope does, a moment after
+   *  you leave it, or until you jump, dash, slide or vault out of it. */
+  #slopeRollStep(dt, holding) {
+    const t = this.t;
+    if (!this.slopeRoll && !this.vault && !this.dashing && !this.sliding && this.#downhill() &&
+        (t.vaultBuf > 0 || holding)) {
+      this.slopeRoll = true;
+      t.vaultBuf = 0;
+      t.rollOff = P.ROLL_OFF;
+      this.fx.dust(this.cx, this.footY, -Math.sign(this.vx || this.facing) * 45, 6, '#ffe6a8');
+      sfx.vault();
+    }
+    if (!this.slopeRoll) return;
+    if (this.vault || this.dashing || this.sliding || this.dead) { this.slopeRoll = false; return; }
+    // on a slope (or just over a bump in it) the roll keeps going
+    if (this.#downhill() || (!this.grounded && t.rollOff > 0)) t.rollOff = P.ROLL_OFF;
+    else if ((t.rollOff -= dt) <= 0) { this.slopeRoll = false; return; }
+    if (this.rolling <= 0.02) this.rolling = P.ROLL_TIME;      // the tumble loops
+  }
+
+  /** Fast enough, on a full bar, and upright, to run on water (see Level.skim).
+   *  A burst counts whatever it has left in the bar: it is the fastest thing
+   *  there is, and a burst that sank you halfway across would be a trap.
+   *  Coming down on it from a great height you go straight through, unless a
+   *  dash broke the fall just before. */
+  #skimming() {
+    return !this.sliding && !this.crouching && Math.abs(this.vx) >= P.WATER_SKIM &&
+           (this.flow >= P.WATER_FLOW || this.bursting) && !this.#plunging();
+  }
+
+  /** Falling from higher than water will hold you? A dash resets the height
+   *  (see #endDash), and holds you up while it lasts. */
+  #plunging() {
+    return !this.grounded && !this.dashing && this.footY - this.airTop > P.WATER_HIGH;
+  }
+
+  /** Through the surface. You keep running, or sliding, while you sink; reach
+   *  a bank while you are still shallow and C pulls you out (#sinkStep), and
+   *  if your head goes under you struggle at the surface and drown. The
+   *  splash is here, where you go in. */
+  #sink() {
+    if (this.dead || this.sinking) return;
+    this.sinking = true;
+    this.struggle = 0;
+    this.sinkSurface = this.#waterSurface();
+    this.flow = 0;
+    this.vault = null;
+    this.cue = null;
+    this.t.dash = 0;
+    this.t.vaultBuf = 0;
+    this.slopeRoll = false;
+    this.bursting = false;
+    this.burstWind = 0;
+    this.crouching = false;
+    this.grounded = false;
+    this.gliding = false;
+    this.onIce = false;
+    this.wallDir = 0;
+    // A plunge from height goes deeper at once; the water takes most of it,
+    // and most of a run too (a dash that hit the water carried on at its own
+    // pace, wading at 700).
+    this.vy = clamp(this.vy * 0.12, P.SINK_SPEED, 170);
+    this.vx = Math.sign(this.vx) * Math.min(Math.abs(this.vx) * 0.7, 300);
+    this.fx.burst(this.cx, this.sinkSurface, 22, '#9fdcff');
+    this.fx.dust(this.cx, this.sinkSurface, 0, 12, '#dff4ff');
+    this.fx.shake(3);
+    sfx.splash();
+  }
+
+  /** Any water at all in the box (or just under the feet)? */
+  #touchingWater() {
+    const L = this.level;
+    const x0 = Math.floor((this.x + 1) / TILE), x1 = Math.floor((this.x + this.w - 2) / TILE);
+    const y0 = Math.floor(this.y / TILE), y1 = Math.floor(this.footY / TILE);
+    for (let ty = y0; ty <= y1; ty++)
+      for (let tx = x0; tx <= x1; tx++) if (L.get(tx, ty) === T.WATER) return true;
+    return false;
+  }
+
+  /** The pixel height of the top of the water you are in. */
+  #waterSurface() {
+    const L = this.level;
+    const ty0 = Math.floor(this.y / TILE), ty1 = Math.floor((this.footY - 1) / TILE);
+    for (const px of [this.cx, this.x + 2, this.x + this.w - 3]) {
+      const tx = Math.floor(px / TILE);
+      for (let ty = ty0; ty <= ty1; ty++) {
+        if (L.get(tx, ty) !== T.WATER) continue;
+        while (L.get(tx, ty - 1) === T.WATER) ty--;
+        return ty * TILE;
+      }
+    }
+    return this.footY;
+  }
+
+  #sinkStep(dt, input) {
+    const L = this.level;
+    const t = this.t;
+    const ix = this.struggle > 0 ? 0 : input.moveX;
+    if (input.hit('vault')) t.vaultBuf = P.VAULT_BUFFER;
+    t.vaultBuf = Math.max(0, t.vaultBuf - dt);
+    t.cue = Math.max(0, t.cue - dt);
+
+    if (this.struggle > 0) {
+      // Fighting it at the surface: the head bobs up and goes under again,
+      // and then it goes under for good.
+      this.struggle -= dt;
+      this.vx -= this.vx * Math.min(1, 8 * dt);
+      const under = this.struggle < P.STRUGGLE_UNDER;
+      const bob = Math.sin(this.struggle * 22) * 1.5;
+      const target = this.sinkSurface + P.DROWN_DEPTH - 3 + bob - this.h;
+      this.vy = under ? 60 : (target - this.y) * 12;
+      if (Math.random() < dt * 18)
+        this.fx.dust(this.cx + (Math.random() - 0.5) * 12, this.sinkSurface, (Math.random() - 0.5) * 60, 2, '#dff4ff');
+    } else {
+      if (this.sliding) {
+        // a slide goes on into the water, losing itself, and you come up out
+        // of it into a wade once it is spent
+        this.vx -= Math.sign(this.vx) * P.SLIDE_FRICTION * dt;
+        if (Math.abs(this.vx) < P.SLIDE_EXIT && this.#tryStand()) this.sliding = false;
+      } else if (ix !== 0) {
+        const reversing = Math.sign(ix) !== Math.sign(this.vx) && this.vx !== 0;
+        if (reversing || Math.abs(this.vx) < P.WADE_MAX) this.vx += ix * P.ACCEL * 0.5 * dt;
+      } else {
+        this.vx -= Math.sign(this.vx) * Math.min(P.FRICTION * 0.3 * dt, Math.abs(this.vx));
+      }
+      const over = Math.abs(this.vx) - P.WADE_MAX;
+      if (over > 0) this.vx -= Math.sign(this.vx) * over * Math.min(1, P.WADE_DRAG * dt);
+      this.vy += (P.SINK_SPEED - this.vy) * Math.min(1, 8 * dt);
+      if (ix !== 0 && !this.sliding) this.facing = ix;
+    }
+
+    if (!L.boxHitsWall(this.x + this.vx * dt, this.y, this.w, this.h)) this.x += this.vx * dt;
+    else this.vx = 0;
+    if (!L.boxHitsWall(this.x, this.y + this.vy * dt, this.w, this.h)) this.y += this.vy * dt;
+    else this.vy = 0;
+    for (const g of this.trail) g.life -= dt;
+    this.trail = this.trail.filter((g) => g.life > 0);
+
+    // Wading is no shelter: a reef's spikes still kill. And wading clear of
+    // the water altogether (over a sand bar that has crumbled away, say) ends
+    // it: there is nothing left to sink in.
+    if (L.boxHitsSpikes(this.x, this.y, this.w, this.h)) { this.kill(); return; }
+    if (!this.#touchingWater()) { this.sinking = false; this.struggle = 0; this.#animate(dt, ix); return; }
+
+    const depth = this.footY - this.sinkSurface;
+    if (this.struggle > 0) {
+      if (this.struggle <= dt * 0.5) { this.kill('water'); return; }
+    } else if (depth >= P.DROWN_DEPTH) {
+      this.struggle = P.STRUGGLE_TIME;
+      this.cue = null;
+      sfx.splash();
+    } else {
+      // A bank in reach and you still shallow: C pulls you up onto it.
+      const dir = ix || this.facing;
+      const lip = !this.sliding && depth <= P.PULL_DEPTH ? this.#lipAhead(dir, 1) : null;
+      if (lip) {
+        if (!this.cue) sfx.cue();
+        this.cue = lip;
+        t.cue = P.VAULT_GRACE;
+      } else if (t.cue <= 0) this.cue = null;
+      if (this.cue && t.vaultBuf > 0) {
+        this.sinking = false;
+        this.recentSpeed = 0;       // out at a walk: the run you fell in with is gone
+        this.#startVault();
+        if (this.vault) { this.vault.pull = true; return; }
+        this.sinking = true;
+      }
+    }
+    this.#animate(dt, ix);
+    if (this.footfall) {                       // wading strides throw water, not dust
+      this.fx.dust(this.cx - this.facing * 3, this.sinkSurface, -this.facing * 30, 2, '#bfeaff');
+      this.footfall = false;
+    }
+  }
+
+  /** True while the ground underfoot is water. */
+  get onWater() {
+    return this.grounded && this.level.get(Math.floor(this.cx / TILE), Math.floor(this.footY / TILE)) === T.WATER;
+  }
+
+  kill(cause = null) {
     if (this.dead) return;
+    this.deathCause = cause;
     this.dead = true;
+    this.sinking = false;
+    this.struggle = 0;
     this.deadTimer = 0.45;
     this.deaths++;
     this.flow = 0;
@@ -236,9 +456,17 @@ export class Player {
     this.cue = null;
     this.bursting = false;
     this.burstWind = 0;
-    this.fx.burst(this.cx, this.cy, 26, '#ef5a5a');
-    this.fx.shake(6);
-    sfx.death();
+    if (cause === 'water') {                // gone under: the splash was on the way in
+      for (let i = 0; i < 6; i++) this.fx.sparkle(this.cx + (Math.random() - 0.5) * 10, this.sinkSurface + 2, '#dff4ff');
+    } else if (cause === 'still') {         // caught: frozen where you stood
+      this.fx.burst(this.cx, this.cy, 26, '#e8eef8');
+      this.fx.shake(4);
+      sfx.frozen();
+    } else {
+      this.fx.burst(this.cx, this.cy, 26, '#ef5a5a');
+      this.fx.shake(6);
+      sfx.death();
+    }
   }
 
   // ------------------------------------------------------------------ update
@@ -249,21 +477,20 @@ export class Player {
   // the world takes.
   update(dt, input, realDt = dt) {
     if (this.dead) { this.deadTimer -= dt; return; }
+    if (this.sinking) { this.#sinkStep(dt, input); return; }
+    // A glide is whatever this step's ground handling says it is: a dash, a
+    // burst or a vault skips that, and must not inherit the last one.
+    this.gliding = false;
 
     const L = this.level;
     const t = this.t;
     for (const k of ['coyote', 'buffer', 'dashCool', 'dashBuf', 'refill', 'super', 'wallCoyote',
                      'wallLock', 'noSnap', 'stepFx', 'land', 'drop', 'bump', 'cue',
-                     'vaultFx', 'vaultBuf', 'refund', 'rollFree', 'burstReady',
+                     'vaultFx', 'vaultBuf', 'rollFree', 'burstReady',
                      'skid', 'skidFx', 'ghost'])
       t[k] = Math.max(0, t[k] - dt);
     this.rolling = Math.max(0, this.rolling - dt);
-    // measured from the frame you left the ground, so a landing knows how long
-    // it had to think about it
     this.airTime = this.grounded ? 0 : this.airTime + dt;
-    // the highest the feet have been since leaving the ground: a landing is
-    // priced on how far it came down from there
-    this.airPeak = this.grounded ? this.footY : Math.min(this.airPeak ?? this.footY, this.footY);
     this.#remember(dt);
 
     let ix = input.moveX;
@@ -290,16 +517,19 @@ export class Player {
     // A press takes the ledge in front of you; holding the key takes every
     // descent you meet, so a staircase can be run straight down.
     const holding = input.held('vault');
-    this.holdingVault = holding;       // a hard landing reads it (see #landCost)
+    this.holdingVault = holding;       // a hard landing reads it, to tuck into a roll
+    this.#slopeRollStep(dt, holding);
     if (!this.vault && !this.dashing) {
       if ((t.vaultBuf > 0 || (holding && this.cue?.kind === 'down')) && this.cue) this.#startVault();
-      else if ((t.vaultBuf > 0 || holding) && t.refund > 0) this.#recoveryRoll();
     }
     if (this.vault) {
+      const pulling = this.vault.pull;      // climbing out of water starts in it
       this.#vaultStep(dt);
       this.#animate(dt, ix);
       this.#runFx(dt);
       if (L.boxHitsSpikes(this.x, this.y, this.w, this.h) || this.y > L.killY) this.kill();
+      if (!pulling && L.boxInWater(this.x, this.y, this.w, this.h)) this.#sink();
+      if (!this.vault) this.airTop = this.footY;
       return;
     }
 
@@ -331,12 +561,18 @@ export class Player {
     this.#slideState(dt, iy, ix);
 
     // --- integrate --------------------------------------------------------
+    // Water holds you up only while you are fast and upright: the level asks
+    // this, not the player, so every floor query sees water the same way.
+    if (this.grounded || this.wallDir !== 0 || this.dashing) this.airTop = this.footY;
+    else this.airTop = Math.min(this.airTop, this.footY);
+    L.skim = this.#skimming();
     this.wasGrounded = this.grounded;
     if (this.grounded) this.#slopeLift();
     this.#moveX(this.vx * dt);
     if (this.grounded) this.#slopeLift();
     this.#moveY(this.vy * dt, dt);
     this.#unstick();
+    this.onIce = this.grounded && L.iceUnder(this.x, this.x + this.w, this.footY);
 
     // --- ground state, flow, feedback -------------------------------------
     if (this.grounded) {
@@ -359,6 +595,7 @@ export class Player {
 
     // --- hazards ----------------------------------------------------------
     if (L.boxHitsSpikes(this.x, this.y, this.w, this.h)) this.kill();
+    if (L.boxInWater(this.x, this.y, this.w, this.h)) this.#sink();
     if (this.y > L.killY) this.kill();
   }
 
@@ -367,23 +604,29 @@ export class Player {
     if (this.bursting) { this.vx = this.burstDir * P.BURST_SPEED; return; }
     const top = this.crouching ? P.CROUCH_MAX : this.topSpeed;
     const onGround = this.grounded;
+    // Ice: let go and you glide on, the feet spin when you push, and turning
+    // round takes an age. It never takes speed away; it just will not let you
+    // stop, or get going, in a hurry.
+    const icy = onGround && this.onIce;
+    this.gliding = icy && ix === 0 && !this.sliding && !this.slopeRoll && Math.abs(this.vx) > 12;
 
     if (this.sliding) {
-      const fr = P.SLIDE_FRICTION * (ix !== 0 && Math.sign(ix) === Math.sign(this.vx) ? 0.4 : 1);
+      const fr = P.SLIDE_FRICTION * (ix !== 0 && Math.sign(ix) === Math.sign(this.vx) ? 0.4 : 1) * (icy ? P.ICE_SLIDE : 1);
       this.vx -= Math.sign(this.vx) * fr * dt;
       if (Math.abs(this.vx) < 6) this.vx = 0;
     } else if (ix !== 0) {
       const reversing = Math.sign(ix) !== Math.sign(this.vx) && this.vx !== 0;
-      let accel = (onGround ? P.ACCEL : P.ACCEL_AIR) * (reversing ? P.TURN_BOOST : 1) * (this.crouching ? 0.7 : 1);
+      let accel = (onGround ? P.ACCEL : P.ACCEL_AIR) * (reversing ? P.TURN_BOOST : 1) * (this.crouching ? 0.7 : 1) *
+                  (icy ? (reversing ? P.ICE_TURN : P.ICE_GRIP) : 1);
       if (Math.abs(this.vx) > top && !reversing) accel = 0;   // never fight your own momentum
       this.vx += ix * accel * dt;
-      if (Math.abs(this.vx) > top) {
+      if (Math.abs(this.vx) > top && !this.slopeRoll) {
         // over top speed: bleed slowly instead of clamping, so boosts survive
         const drag = P.OVERSPEED_DRAG * (onGround ? 1 : 0.45) * dt;
         this.vx -= Math.sign(this.vx) * Math.min(drag, Math.abs(this.vx) - top);
       }
-    } else {
-      const fr = (onGround ? P.FRICTION : P.FRICTION_AIR) * dt;
+    } else if (!this.slopeRoll) {             // (a roll needs no stick held to keep going)
+      const fr = (onGround ? (icy ? P.ICE_FRICTION : P.FRICTION) : P.FRICTION_AIR) * dt;
       this.vx -= Math.sign(this.vx) * Math.min(fr, Math.abs(this.vx));
     }
 
@@ -393,8 +636,14 @@ export class Player {
       if (slope) {
         const downhill = (slope === T.SLOPE_L ? 1 : -1);   // "\" descends towards +x
         const mult = this.sliding ? P.SLOPE_SLIDE_MULT : 1;
-        if (Math.sign(this.vx) === downhill || this.vx === 0)
+        if (Math.sign(this.vx) === downhill || this.vx === 0) {
           this.vx += downhill * P.SLOPE_DOWNHILL * mult * dt;
+          // tucked into a roll, a slope is a launch ramp: it runs away with you
+          if (this.slopeRoll) {
+            this.vx += downhill * P.ROLL_DOWNHILL * dt;
+            if (Math.abs(this.vx) > P.ROLL_MAX) this.vx = downhill * P.ROLL_MAX;
+          }
+        }
         else if (this.vx !== 0)
           this.vx -= Math.sign(this.vx) * P.SLOPE_UPHILL * dt;
       }
@@ -440,6 +689,7 @@ export class Player {
     }
     this.grounded = false;
     this.sliding = false;
+    this.slopeRoll = false;
     this.fallFrom = null;
     t.buffer = 0; t.coyote = 0; t.noSnap = 0.09;
     this.fx.dust(this.cx, this.footY, -Math.sign(this.vx) * 30, 6);
@@ -504,6 +754,7 @@ export class Player {
     this.vx = d.x !== 0 ? Math.sign(d.x) * Math.max(P.DASH_END, this.dashEntry ?? 0) : this.vx * 0.4;
     this.vy = d.y < 0 ? -170 : 0;
     if (this.grounded) this.vy = 0;
+    this.airTop = this.footY;      // a dash breaks a fall: water counts from here
   }
 
   #slideState(dt, iy, ix) {
@@ -535,10 +786,21 @@ export class Player {
   /** Carry "the speed and flow you had a moment ago" forward, so a vault called
    *  a frame after brushing the ledge still pays out what you ran in with. */
   #remember(dt) {
-    const sp = Math.abs(this.vx);
-    this.recentSpeed = Math.max(sp, this.recentSpeed - P.RECENT_FADE * dt);
+    // A dash remembers what it will hand off (see #endDash), not its own pace:
+    // a vault or roll called just after one used to pay the dash's 560 (or a
+    // burst dash's 1000) back out as a run.
+    const sp = this.dashing ? Math.min(Math.abs(this.vx), Math.max(P.DASH_END, this.dashEntry ?? 0))
+                            : Math.abs(this.vx);
+    this.recentSpeed -= P.RECENT_FADE * dt;
+    if (sp >= this.recentSpeed) { this.recentSpeed = sp; this.recentDir = Math.sign(this.vx) || this.recentDir; }
     this.recentFlow = Math.max(this.flow, this.recentFlow - dt * 1.6);
   }
+
+  /** The speed you had a moment ago, if it was going `dir`. A vault or roll
+   *  pays it back so clipping a lip costs nothing, but never the other way:
+   *  a stale cue behind you, or a skid round into a ledge, used to turn a run
+   *  round on the spot at full speed. */
+  #recentToward(dir) { return this.recentDir === dir ? this.recentSpeed : 0; }
 
   /** Is there room for the full-height box, with the feet where they are? */
   #canStand() {
@@ -660,14 +922,12 @@ export class Player {
     // ledge you did not call is meant to put you in the air.
     if (!this.grounded && this.wasGrounded && this.vy >= 0 && this.t.noSnap <= 0 && !this.dashing) {
       const snap = Math.min(P.SNAP_MAX, P.SNAP_BASE + Math.abs(this.vx) * P.SNAP_SPEED);
-      const before = this.footY;
       const surf = L.floorUnder(this.x + 1, this.x + this.w - 1, this.footY - 1, this.footY + snap,
         { oneway: this.t.drop <= 0 });
       if (surf !== null) {
         this.y = surf - this.h;
         this.vy = 0;
         this.grounded = true;
-        this.#ledgeCost(surf - before);       // stumbling down a step is not free
         if (this.speed > 200 && this.t.stepFx <= 0) {
           this.fx.dust(this.cx, this.footY, -Math.sign(this.vx) * 30, 2);
           this.t.stepFx = 0.07;
@@ -755,86 +1015,15 @@ export class Player {
     this.fx.dust(this.cx, this.footY, 0, 4 + impact * 8);
     this.t.land = 0.14;
     if (impact > 0.25) { this.fx.shake(impact * 5); sfx.land(); }
-    if (this.t.rollFree > 0) {
-      this.rolling = Math.max(this.rolling, 0.14);   // roll out of the landing
+    // A landing never costs anything, however far it came down (it used to
+    // tax the run unless you rolled, and that was one thing too many to ask
+    // of a player already reading the next gap). C held as you touch still
+    // tucks you into a roll, for the look of it.
+    if (this.t.rollFree > 0 || (this.holdingVault && impact > 0.5)) {
+      this.rolling = Math.max(this.rolling, this.t.rollFree > 0 ? 0.14 : P.ROLL_TIME);
       this.t.rollFree = 0;
-    } else if (this.fallFrom !== null) {
-      this.#ledgeCost(this.footY - this.fallFrom);
-    } else {
-      this.#landCost(this.footY - (this.airPeak ?? this.footY));
     }
     this.fallFrom = null;
-  }
-
-  /** Coming down hard from a high jump: an ordinary jump on the flat costs
-   *  nothing, a long way down eats a share of the run. It is booked the same
-   *  way as a scuffed ledge, so a roll (C pressed just before or after the
-   *  landing, or held) hands it all back: roll the big ones and keep it. */
-  #landCost(drop) {
-    if (this.vault || this.dashing || this.bursting) return;
-    const f = clamp((drop - P.LAND_FREE) / (P.LAND_FULL - P.LAND_FREE), 0, 1);
-    if (f <= 0) return;
-    // C already down (or just pressed) as you touch: roll straight out of it,
-    // keeping every bit of the run. Pressed a moment late, the refund below
-    // still hands it back; not at all, and the landing takes its share.
-    if (this.holdingVault || this.t.vaultBuf > 0) {
-      this.t.vaultBuf = 0;
-      this.rolling = P.ROLL_TIME;
-      this.vaults++;
-      this.fx.dust(this.cx, this.footY, -Math.sign(this.vx) * 40, 6, '#ffe6a8');
-      sfx.vault();
-      return;
-    }
-    const loss = Math.abs(this.vx) * P.LAND_LOSS * f;
-    if (loss < 8) return;
-    this.lostSpeed = loss;
-    this.lostFlow = this.flow * P.LAND_FLOW_LOSS * f;
-    this.vx -= Math.sign(this.vx) * loss;
-    this.flow -= this.lostFlow;
-    this.t.refund = P.ROLL_REFUND;
-    this.fx.dust(this.cx, this.footY, -Math.sign(this.vx) * 20, 4 + Math.round(f * 5), '#8f86c9');
-    this.fx.shake(1 + f * 2);
-  }
-
-  /** Dropping off a ledge on your feet is clumsy: it costs speed, and the more
-   *  of a ledge it was the more it costs. Airtime is charged on top of the
-   *  height — the longer you spent falling, the more of the run you have to
-   *  reassemble on landing — so the one thing you must never do off a real
-   *  drop is nothing. Rolling (the vault key) avoids the whole bill, and
-   *  rolling just afterwards still buys it back. */
-  #ledgeCost(drop) {
-    if (this.vault || this.dashing || this.t.rollFree > 0) return;
-    const f = clamp((drop - P.LEDGE_MIN_DROP) / (P.LEDGE_FULL_DROP - P.LEDGE_MIN_DROP), 0, 1);
-    const air = clamp((this.airTime - P.LEDGE_AIR_FREE) / (P.LEDGE_AIR_FULL - P.LEDGE_AIR_FREE), 0, 1);
-    if (f <= 0 && air <= 0) return;
-    const bite = Math.min(P.LEDGE_LOSS_MAX, P.LEDGE_LOSS * f + P.LEDGE_AIR_LOSS * air);
-    const loss = Math.abs(this.vx) * bite;
-    if (loss < 8) return;
-    this.lostSpeed = loss;
-    this.lostFlow = this.flow * P.LAND_FLOW_LOSS * Math.min(1, f + air);
-    this.vx -= Math.sign(this.vx) * loss;
-    this.flow -= this.lostFlow;
-    this.t.refund = P.ROLL_REFUND;
-    // a bigger stumble throws more up off the boots
-    this.fx.dust(this.cx, this.footY, -Math.sign(this.vx) * 20, 4 + Math.round(air * 5), '#8f86c9');
-    if (air > 0.35) this.fx.shake(1 + air * 2);
-  }
-
-  /** Too late for a clean roll off the lip, but not too late to roll out of the
-   *  landing: hand back everything the scuff took. */
-  #recoveryRoll() {
-    this.vx += Math.sign(this.vx || this.facing) * this.lostSpeed;
-    this.flow = Math.min(P.FLOW_MAX, this.flow + this.lostFlow);
-    this.recentSpeed = Math.max(this.recentSpeed, Math.abs(this.vx));
-    this.lostSpeed = 0;
-    this.lostFlow = 0;
-    this.t.refund = 0;
-    this.t.vaultBuf = 0;
-    this.rolling = P.ROLL_TIME;
-    this.vaults++;
-    this.fx.burst(this.cx, this.footY - 3, 10, '#ffe6a8');
-    this.fx.dust(this.cx, this.footY, -Math.sign(this.vx) * 40, 5, '#ffe6a8');
-    sfx.vault();
   }
 
   // ------------------------------------------------------------- vaulting
@@ -860,6 +1049,8 @@ export class Player {
       }
     }
     if (t.cue <= 0) this.cue = null;
+    // a cue left behind you (you have turned round since) is not yours to call
+    if (this.cue && Math.abs(this.vx) > 20 && Math.sign(this.vx) !== this.cue.dir) { this.cue = null; t.cue = 0; }
     // a held cue that we have already arrived at is just noise
     if (this.cue) {
       const c = this.cue;
@@ -877,7 +1068,7 @@ export class Player {
   }
 
   /** A lip in front of us that we could pull up onto. */
-  #lipAhead(dir) {
+  #lipAhead(dir, minRise = P.VAULT_MIN) {
     const L = this.level;
     // the faster you travel the further ahead the prompt has to reach, or there
     // is no window left to press in
@@ -888,7 +1079,7 @@ export class Player {
     }
     if (d === null) return null;
     const landX = this.x + dir * (d + this.w + 2);
-    for (let rise = P.VAULT_MIN; rise <= P.VAULT_MAX; rise++) {
+    for (let rise = minRise; rise <= P.VAULT_MAX; rise++) {
       const probeY = this.y - rise;
       if (L.boxHitsWall(this.x, probeY, this.w, this.h)) return null;   // no headroom over us
       if (L.boxHitsWall(landX, probeY, this.w, this.h)) continue;       // still inside the rock
@@ -943,7 +1134,7 @@ export class Player {
     // Called on time, a ledge costs you nothing at all: pay out the best speed
     // and flow of the last moment, not whatever the lip left you with. The rise
     // is scripted; the legs are not, so you take it at a run.
-    const speed = Math.max(Math.abs(this.vx), this.recentSpeed, P.VAULT_EXIT);
+    const speed = Math.max(Math.abs(this.vx), this.#recentToward(c.dir), P.VAULT_EXIT);
     // The climb has to be over by the time the stride reaches the face (the
     // rise is done at 80% of the vault, see #vaultStep). At a sprint it always
     // was; at burst speed a climb of the usual length was still going when you
@@ -1002,8 +1193,6 @@ export class Player {
     this.t.mantle = 0;
     this.t.super = 0;
     this.t.vaultBuf = 0;
-    this.t.refund = 0;
-    this.lostSpeed = 0;
     this.fallFrom = null;
     this.facing = c.dir;
     this.flow = Math.max(this.flow, this.recentFlow);
@@ -1012,7 +1201,7 @@ export class Player {
   /** Rolling off a ledge is not a scripted hop: you keep your own momentum and
    *  simply leave the edge already tucked, so the drop costs nothing. */
   #roll(c) {
-    const speed = Math.max(Math.abs(this.vx), this.recentSpeed, P.VAULT_EXIT);
+    const speed = Math.max(Math.abs(this.vx), this.#recentToward(c.dir), P.VAULT_EXIT);
     this.vx = c.dir * speed;
     this.rolling = P.ROLL_TIME;
     this.t.rollFree = P.ROLL_FREE;
@@ -1020,7 +1209,9 @@ export class Player {
     // a ramp it must not: the slope falls away as fast as the edge scanner can
     // see, so it offers a roll there too, and switching the snap off launched
     // you clean off the ramp in a long hop instead of tumbling down it.
-    this.t.noSnap = this.#rampAhead(c.dir, c.dist) ? 0 : 0.2;
+    const ramp = this.#rampAhead(c.dir, c.dist);
+    this.t.noSnap = ramp ? 0 : 0.2;
+    if (ramp) { this.slopeRoll = true; this.t.rollOff = P.ROLL_OFF; }
     this.sliding = false;
     this.crouching = false;
     this.#tryStand();
@@ -1143,7 +1334,8 @@ export class Player {
   #endBurst() {
     if (!this.bursting) return;
     this.bursting = false;
-    this.recentSpeed = Math.max(this.recentSpeed, Math.abs(this.vx));
+    // (at burst speed, not a burst dash's: that is the dash's own pace)
+    if (P.BURST_SPEED >= this.recentSpeed) { this.recentSpeed = P.BURST_SPEED; this.recentDir = this.burstDir; }
     this.fx.burst(this.cx, this.cy, 14, '#dff3ff');
   }
 
@@ -1170,7 +1362,8 @@ export class Player {
     if (this.bursting) return;       // the burst owns the meter while it runs
     const sp = Math.abs(this.vx);
     const moving = ix !== 0 && Math.sign(ix) === Math.sign(this.vx);
-    if (sp > 150 && (moving || this.sliding || !this.grounded)) this.flow += dt * P.FLOW_GAIN;
+    if (sp > 150 && (moving || this.sliding || this.slopeRoll || !this.grounded)) this.flow += dt * P.FLOW_GAIN;
+    else if (sp > 150 && this.gliding) { /* carried along on ice: the bar holds */ }
     else if (sp < 70) this.flow -= dt * P.FLOW_STALL;
     else this.flow -= dt * P.FLOW_DRAIN;
     this.flow = clamp(this.flow, 0, P.FLOW_MAX);
@@ -1184,10 +1377,22 @@ export class Player {
     // footfalls and the cadence you hear is the cadence you see.
     if (this.footfall && this.grounded && !this.vault && this.speed > 90) {
       const hard = this.speed > P.SPRINT_ANIM;
-      this.fx.dust(this.cx + back * 4, this.footY, back * (25 + this.speed * 0.2), hard ? 3 : 1);
-      sfx.step();
+      if (this.onWater) {                     // spray, not dust: every stride a splash
+        this.fx.dust(this.cx + back * 3, this.footY, back * (40 + this.speed * 0.3), 5, '#bfeaff');
+        sfx.skim();
+      } else {
+        this.fx.dust(this.cx + back * 4, this.footY, back * (25 + this.speed * 0.2), hard ? 3 : 1);
+        sfx.step();
+      }
     }
     this.footfall = false;
+
+    // Running on water throws a plume up behind you, every step, not just on
+    // the footfalls: it is how you see that the water is holding you up.
+    if (this.onWater && this.speed > 200 && Math.random() < 0.85)
+      this.fx.spray(this.cx + back * 4, this.footY, back, this.speed);
+    if (this.gliding && this.speed > 60 && Math.random() < 0.25)
+      this.fx.sparkle(this.cx + back * 4, this.footY - 1, '#e8f6ff');
 
     // Afterimages. A dash or a burst lays one down every frame, which smears
     // into a solid streak; a sprint leaves a handful of separate ghosts, so you
@@ -1219,14 +1424,16 @@ export class Player {
     }
 
     let name = 'idle';
-    if (this.dashing) name = 'dash';
+    if (this.struggle > 0) name = 'struggle';
+    else if (this.dashing) name = 'dash';
     else if (this.rolling > 0) name = 'roll';
     else if (this.sliding) name = 'slide';
     else if (this.crouching || this.h < P.H)
       name = this.speed > P.SLIDE_EXIT ? 'slide' : 'crouch';
     else if (this.wallDir !== 0 && !this.grounded) name = 'wall';
-    else if (!this.grounded) name = this.vy < 0 ? 'jump' : 'fall';
+    else if (!this.grounded && !this.sinking) name = this.vy < 0 ? 'jump' : 'fall';
     else if (this.t.skid > 0) name = 'skid';
+    else if (this.gliding) name = 'glide';
     else if (this.speed > P.SPRINT_ANIM) name = 'sprint';
     else if (this.speed > 12) name = 'run';
     else if (this.t.land > 0.02) name = 'land';
@@ -1260,6 +1467,8 @@ export class Player {
       }
     } else if (name === 'idle') {
       while (a.t > 0.5) { a.t -= 0.5; a.frame = (a.frame + 1) % n; }
+    } else if (name === 'struggle') {
+      while (a.t > 0.09) { a.t -= 0.09; a.frame = (a.frame + 1) % n; }
     } else a.frame = 0;
   }
 

@@ -59,7 +59,7 @@ export function buildUndercroft() {
     'Keep your speed and take every one in your stride.',
     'Pads charge you up. Fangs overhead: hop low.',
   ]);
-  L.boost(14, GY, 3, +1);
+  L.boost(12, GY, 3, +1);                  // (early enough for the camera to make room for the leap)
   pit(21, 79);
   pillars([38, 59, 80]);
 

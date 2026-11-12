@@ -11,6 +11,7 @@ import { fmtTime } from './hud.js';
 import { keyName } from './input.js';
 import { makeCanvas } from './art.js';
 import { sfx } from './audio.js';
+import { unlocked, lastUnlocked, bestTime } from './save.js';
 
 const INK = '#cbc4e6', DIM = '#6f649c', HOT = '#ffd678', COOL = '#9cf6ff', GOOD = '#7dffc4';
 
@@ -37,10 +38,11 @@ function thumbnail(level, theme) {
       const t = level.get(tx, ty);
       let col = null;
       if (t === T.SOLID || t === T.SLOPE_L || t === T.SLOPE_R || t === T.LOWCEIL)
-        col = ty > 0 && level.get(tx, ty - 1) === T.EMPTY ? top : rock;
+        col = level.isIce(tx, ty) ? '#d8f2ff' : ty > 0 && level.get(tx, ty - 1) === T.EMPTY ? top : rock;
       else if (t === T.ONEWAY) col = '#a294e0';
       else if (t === T.SPIKE_UP || t === T.SPIKE_DOWN) col = '#ff6b7a';
       else if (t === T.CRUMBLE) col = '#c99c6e';
+      else if (t === T.WATER) col = level.waterTop(tx, ty) ? '#9fe0ff' : '#245f8f';
       if (col) { g.fillStyle = col; g.fillRect(tx, ty, 1, 1); }
     }
   }
@@ -67,8 +69,10 @@ export class Menus {
   show(screen) {
     this.screen = screen;
     this.t = 0;
+    this.note = '';               // a line of feedback under the level list
     if (screen === 'select') {
-      this.sel = this.game.levelIndex;
+      // on the level you were on, or the furthest one you can reach
+      this.sel = Math.min(this.game.levelIndex, lastUnlocked());
       this.thumbs ??= LEVELS.map((lv) => {
         const level = lv.build();
         return thumbnail(level, THEMES[level.theme] ?? THEMES.night);
@@ -85,7 +89,11 @@ export class Menus {
     const g = this.game;
     switch (this.screen) {
       case 'title': return [['play', () => this.show('select')], ['controls', () => g.menu?.show()]];
-      case 'select': return LEVELS.map((lv, i) => [lv.name, () => g.start(i)]);
+      case 'select': return LEVELS.map((lv, i) => [lv.name, () => {
+        if (unlocked(i)) { g.start(i); return; }
+        this.note = `beat ${LEVELS[i - 1].name} to open ${lv.name}`;
+        sfx.locked();
+      }]);
       case 'pause': return [
         ['resume', () => this.close()],
         ['restart run', () => { this.close(); g.restart(); }],
@@ -194,8 +202,14 @@ export class Menus {
       const ry = y + 4 + i * rowH;
       const on = i === this.sel;
       if (on) { ctx.fillStyle = '#241e42'; ctx.fillRect(x + 2, ry, w - 4, rowH - 1); ctx.fillStyle = HOT; ctx.fillRect(x + 2, ry, 1, rowH - 1); }
-      const best = Number(this.#best(lv)) || 0;
+      const best = bestTime(lv);
+      const open = unlocked(i);
       drawText(ctx, `${i + 1}`, x + 8, ry + 4, on ? HOT : DIM, 1);
+      if (!open) {                               // a level you have not earned yet
+        drawText(ctx, lv.name, x + 20, ry + 4, on ? '#8a80b0' : '#4a4270', 1);
+        drawText(ctx, 'locked', x + w - 12 - textWidth('locked', 1), ry + 4, '#4a4270', 1);
+        return;
+      }
       drawText(ctx, lv.name, x + 20, ry + 4, on ? '#ffffff' : INK, 1);
       const stars = '*'.repeat(lv.difficulty ?? 1);
       drawText(ctx, stars, x + 150, ry + 4, '#ff9ecd', 1);
@@ -205,9 +219,14 @@ export class Menus {
       if (best) drawText(ctx, medal ? medal.name : 'clear', x + w - 60 - textWidth(bt, 1), ry + 4, medal ? medal.colour : '#3f9a78', 1);
     });
 
-    // the chosen level: its blurb and a map of it
+    // the chosen level: its blurb and a map of it (or, locked, what opens it)
     const lv = LEVELS[this.sel];
     const by = y + LEVELS.length * rowH + 16;
+    if (!unlocked(this.sel)) {
+      centred(ctx, this.note || `beat ${LEVELS[this.sel - 1].name} to open this one`, by + 4, this.note ? '#ff9ecd' : '#7a6fb5', 1);
+      centred(ctx, 'jump or enter: play   esc: back', VIEW_H - 12, '#564d80', 1);
+      return;
+    }
     (lv.blurb ?? []).forEach((line, i) => centred(ctx, line, by + i * 8, '#b9b2d6', 1));
     const targets = medalTimes(lv).map((m) => `${m.name} ${fmtTime(m.time)}`).join('   ');
     centred(ctx, targets, by + (lv.blurb?.length ?? 0) * 8 + 2, '#7a6fb5', 1);
@@ -222,10 +241,6 @@ export class Menus {
     ctx.drawImage(th, tx, ty, tw, thh);
 
     centred(ctx, 'jump or enter: play   esc: back', VIEW_H - 12, '#564d80', 1);
-  }
-
-  #best(lv) {
-    try { return localStorage.getItem(`momentum.best.${lv.id}`); } catch { return null; }
   }
 
   // ------------------------------------------------------------ pause & co.

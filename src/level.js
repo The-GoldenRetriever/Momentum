@@ -18,6 +18,10 @@ export const T = {
   // the bookkeeping that brings them back lives in `crumbles` / `phases`.
   CRUMBLE: 9,   // gives way a moment after you touch it, grows back later
   PHASE: 10,    // one of two sets of blocks that take turns existing
+  // Water is a floor only to someone running fast across it (see `skim`):
+  // slow down, slide or crouch on it and you wade, sinking, until your head goes
+  // under (see Player.#sink).
+  WATER: 11,
 };
 
 // How far down into its cell a tile is solid: [top, bottom] in pixels.
@@ -46,6 +50,14 @@ export class Level {
     // boxHitsWall). Opening it lets the walk-off after the goal carry on past
     // the edge and off screen, the camera having stopped at the edge.
     this.exitOpen = false;
+    // Set by the player every step: fast enough, and upright, to run on water.
+    // Water's surface is a floor while this is true and nothing at all while
+    // it is not, so every floor query handles it without knowing who asks.
+    this.skim = false;
+    this.chase = null;   // the Stillness, on a level it follows you through
+    // Ice is a skin on rock, not a tile of its own: the cell stays SOLID for
+    // every collision query, and only the feet (iceUnder) and the bake ask.
+    this.icy = new Uint8Array(w * h);
   }
 
   get(tx, ty) {
@@ -101,6 +113,49 @@ export class Level {
   checkpoint(tx, ty) { this.checkpoints.push({ x: tx * TILE + TILE / 2, y: ty * TILE, on: false, t: 0 }); return this; }
   sign(tx, ty, title, lines) { this.signs.push({ x: tx * TILE, y: ty * TILE, title, lines }); return this; }
 
+  /** The Stillness follows you through this level (see mechanics.js): it
+   *  starts `lead` tiles behind you and comes on at `speed`, and it is never
+   *  further than `reach` tiles behind, however fast you run. */
+  stillness(speed, lead = 14, reach = 30) {
+    this.chase = { speed, lead, reach, x: this.spawn.x - lead * TILE, on: false, t: 0 };
+    return this;
+  }
+
+  /** Ice on the rock of row `ty`, `w` tiles from `tx` (see Player: you glide
+   *  on when you let go, and get going and turn round slowly). */
+  ice(tx, ty, w = 1) {
+    for (let x = tx; x < tx + w; x++) if (x >= 0 && x < this.w && ty >= 0 && ty < this.h) this.icy[ty * this.w + x] = 1;
+    return this;
+  }
+
+  /** Ice over every rock top in the level: a level that is all ice. */
+  freeze() {
+    for (let ty = 1; ty < this.h; ty++)
+      for (let tx = 0; tx < this.w; tx++)
+        if (this.get(tx, ty) === T.SOLID && ![T.SOLID, T.CRUMBLE, T.PHASE].includes(this.get(tx, ty - 1)))
+          this.icy[ty * this.w + tx] = 1;    // (under a low roof too: a tunnel floor is a floor)
+    return this;
+  }
+
+  isIce(tx, ty) {
+    if (tx >= this.w) tx = this.w - 1;
+    if (tx < 0 || ty < 0 || ty >= this.h) return false;
+    return this.icy[ty * this.w + tx] === 1 && this.get(tx, ty) === T.SOLID;
+  }
+
+  /** Is the floor under a box spanning x0..x1, feet at footY, ice? */
+  iceUnder(x0, x1, footY) {
+    const ty = Math.floor((footY + 1) / TILE);
+    for (let tx = Math.floor(x0 / TILE); tx <= Math.floor((x1 - 1) / TILE); tx++) if (this.isIce(tx, ty)) return true;
+    return false;
+  }
+
+  /** A body of water, its surface on row `ty`, `depth` rows deep. */
+  water(tx, ty, w, depth) { return this.rect(tx, ty, w, depth, T.WATER); }
+
+  /** The top row of a body of water: the one you run on. */
+  waterTop(tx, ty) { return this.get(tx, ty) === T.WATER && this.get(tx, ty - 1) !== T.WATER; }
+
   /** A row of blocks that give way under you (see mechanics.js). */
   crumble(tx, ty, w = 1, h = 1) {
     for (let y = ty; y < ty + h; y++) {
@@ -138,6 +193,7 @@ export class Level {
     const t = this.get(tx, ty);
     if (t === T.SOLID || t === T.ONEWAY || t === T.SPIKE_UP || t === T.SPIKE_DOWN || t === T.LOWCEIL ||
         t === T.CRUMBLE || t === T.PHASE) return ty * TILE;
+    if (t === T.WATER) return this.skim && this.waterTop(tx, ty) ? ty * TILE : null;
     if (t === T.SLOPE_R) return ty * TILE + (TILE - 1 - clamp(Math.floor(x) - tx * TILE, 0, TILE - 1));
     if (t === T.SLOPE_L) return ty * TILE + clamp(Math.floor(x) - tx * TILE, 0, TILE - 1);
     return null;
@@ -185,6 +241,7 @@ export class Level {
       for (let tx = tx0; tx <= tx1; tx++) {
         const t = this.get(tx, ty);
         if (t === T.EMPTY || t === T.DECO || t === T.LOWCEIL) continue;
+        if (t === T.WATER && !(this.skim && this.waterTop(tx, ty))) continue;
         if (t === T.ONEWAY && !oneway) continue;
         if (slopesOnly && !isSlope(t)) continue;
         if (isSpike(t)) continue;
@@ -204,14 +261,19 @@ export class Level {
     return best;
   }
 
-  /** Slope tile directly under a point, or null — used for downhill acceleration. */
+  /** Slope tile directly under a point, or null — used for downhill acceleration.
+   *  A box rides a slope on whichever edge is higher (see floorUnder), so going
+   *  downhill its feet sit up to half its width above the surface under its
+   *  middle. That much is still "on the slope": with the old 3px allowance a
+   *  runner going down a ramp was off it nearly every step, and the downhill
+   *  push hardly ever happened. */
   slopeUnder(cx, footY) {
-    for (let ty = Math.floor((footY - 2) / TILE); ty <= Math.floor((footY + 2) / TILE); ty++) {
+    for (let ty = Math.floor((footY - 2) / TILE); ty <= Math.floor((footY + 10) / TILE); ty++) {
       const tx = Math.floor(cx / TILE);
       const t = this.get(tx, ty);
       if (isSlope(t)) {
         const surf = this.surfaceY(tx, ty, cx);
-        if (Math.abs(surf - footY) <= 3) return t;
+        if (surf - footY >= -3 && surf - footY <= 9) return t;
       }
     }
     return null;
@@ -231,6 +293,19 @@ export class Level {
       }
     }
     return best;
+  }
+
+  /** Is a box under water, past the surface? (A skimmer's boots ride on it.) */
+  boxInWater(x, y, w, h) {
+    const x0 = Math.floor((x + 2) / TILE), x1 = Math.floor((x + w - 3) / TILE);
+    const y0 = Math.floor(y / TILE), y1 = Math.floor((y + h - 1) / TILE);
+    for (let ty = y0; ty <= y1; ty++) {
+      for (let tx = x0; tx <= x1; tx++) {
+        if (this.get(tx, ty) !== T.WATER) continue;
+        if (!this.waterTop(tx, ty) || y + h > ty * TILE + 6) return true;
+      }
+    }
+    return false;
   }
 
   boxHitsSpikes(x, y, w, h) {

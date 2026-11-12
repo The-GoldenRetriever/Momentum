@@ -2,11 +2,13 @@
 // you pick "next level": the character walks on from the goal under
 // letterbox bars, through the level's invisible end wall and off the edge of
 // the screen (the camera stops at the edge, they do not), the picture fades
-// to black, and a loading screen shows a small white silhouette of them
-// still walking, bottom left, while the next level is built behind it.
+// to black, and a loading screen shows the next level's number and name and
+// a small white silhouette of them still walking, bottom left, while the
+// level is built behind it.
 
 import { VIEW_W, VIEW_H } from './render.js';
 import { sprites, makeCanvas, FRAME_COUNT, SPRITE_W, SPRITE_H } from './art.js';
+import { drawText, textWidth } from './font.js';
 
 export const WALK_SPEED = 120;     // px/s: a brisk walk, not a run. The run-out
                                    // past a goal is about twenty tiles, so this
@@ -53,10 +55,23 @@ function silhouetteFrames() {
 }
 
 /** The loading screen: black, with the character walking in silhouette,
- *  small, in the bottom left corner. `t` is seconds since it came up. */
-export function drawLoading(ctx, t) {
+ *  small, in the bottom left corner, and the level's number and name coming
+ *  up in the middle. `t` is seconds since it came up. */
+export function drawLoading(ctx, t, index = null, lv = null) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  if (lv) {
+    const fade = (from) => Math.max(0, Math.min(1, (t - from) / 0.35));
+    const mid = (str, y, col, s, a) => {
+      if (a <= 0) return;
+      ctx.globalAlpha = a;
+      drawText(ctx, str, Math.round((VIEW_W - textWidth(str, s) + s) / 2), y, col, s);
+      ctx.globalAlpha = 1;
+    };
+    const top = Math.round(VIEW_H / 2 - 16);
+    mid(`level ${index + 1}`, top, '#8a80b0', 1, fade(0.05));
+    mid(lv.name, top + 10, '#ffffff', 2, fade(0.15));
+  }
   const frames = silhouetteFrames();
   // the same stride the game walks at, a little slower than a run
   const n = FRAME_COUNT.run ?? frames.length;

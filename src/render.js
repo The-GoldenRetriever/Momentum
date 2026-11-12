@@ -14,6 +14,7 @@ const C = {
   spike: '#dfe4ff', spikeMid: '#9aa2d8', spikeDark: '#6f77ad',
   deco: '#241d3d', decoLit: '#2e2650',
   crystal: '#6fe8ff', crystalDark: '#2aa8cf', crystalLit: '#d8fbff',
+  ice: '#bfe6f7', iceLit: '#f4fcff', iceMid: '#8fcbe6', iceDark: '#5f9ec4',
   spring: '#ffcb57', springDark: '#c07a25', springLit: '#fff2c4',
   flag: '#ff8ab0', flagOn: '#7dffc4',
   sign: '#8b6a4a', signDark: '#5d442e', signLit: '#b08a62',
@@ -111,6 +112,96 @@ export const THEMES = {
     moss: '#cfe6f2', mossLit: '#ffffff', mossDark: '#8fb0c4', mossShade: '#5d7d92',
     vine: '#9ec4d6', vineDark: '#5f8698', vineLit: '#e8f8ff',
   },
+  // high and cold under the northern lights: a green-washed sky, slate rock,
+  // pale growth
+  aurora: {
+    sky: ['#050a14', '#0a1a2a', '#103a3a', '#1f6a52'],
+    stars: 1, star: '210,255,235', cloud: '120,255,200', haze: 'rgba(60,200,150,0.10)',
+    orb: { x: 92, y: 40, r: 9, lit: '#f2fff8', dim: '#cfe8dc', glow: '200,255,230' },
+    ridges: [
+      { col: '#14303a', rim: '#2a5a5e', shade: '#0f262e', snow: 'rgba(225,255,245,0.30)' },
+      { col: '#112834', rim: '#244e56', shade: '#0c1f29', snow: 'rgba(215,255,240,0.18)' },
+      { col: '#0e202c', rim: '#1e424c', shade: '#0a1922' },
+      { col: '#0b1923', rim: '#183641', shade: '#08131b' },
+    ],
+    bands: [
+      { mid: '#4c5a6a', lit: '#6a7c8e', dark: '#38424f', vein: '#8ff0c8' },
+      { mid: '#3e4a58', lit: '#55657a', dark: '#2d3641', vein: '#6cc8a6' },
+      { mid: '#2f3844', lit: '#3e4a59', dark: '#212831', vein: '#4a9a80' },
+      { mid: '#232a33', lit: '#2e3742', dark: '#181d24', vein: '#356e5e' },
+    ],
+    edge: '#9fe8d0', edgeDim: '#5f9c8c', rockDeep: '#1a2028',
+    moss: '#a8ffd8', mossLit: '#f0fff8', mossDark: '#5cc8a0', mossShade: '#3a8a6e',
+    vine: '#7ae0b8', vineDark: '#3e8a70', vineLit: '#d8fff0',
+  },
+  // the glass sea at evening: a low gold sun through grey haze, wet dark rock,
+  // and water still enough to mirror the sky
+  tide: {
+    sky: ['#1a2030', '#3a4258', '#7a7480', '#d8b088'],
+    stars: 0.2, star: '255,240,220', cloud: '230,210,200', haze: 'rgba(150,140,150,0.14)',
+    orb: { x: 330, y: 132, r: 20, lit: '#ffe7b8', dim: '#f2c48a', glow: '255,214,160' },
+    ridges: [
+      { col: '#4a4c5e', rim: '#6c6c7c', shade: '#3e4050' },
+      { col: '#3c3f50', rim: '#5a5c6e', shade: '#323444' },
+      { col: '#303344', rim: '#4a4d60', shade: '#272a38' },
+      { col: '#252838', rim: '#3c3f52', shade: '#1e202e' },
+    ],
+    bands: [
+      { mid: '#4e5462', lit: '#6c7484', dark: '#3a3f4a', vein: '#9fb4c8' },
+      { mid: '#3f4450', lit: '#565d6c', dark: '#2f333c', vein: '#7f93a8' },
+      { mid: '#30343e', lit: '#40454f', dark: '#23262e', vein: '#5c6c7e' },
+      { mid: '#24272f', lit: '#30343c', dark: '#1a1c22', vein: '#43505e' },
+    ],
+    edge: '#b8c6d6', edgeDim: '#7a8898', rockDeep: '#1c1f26',
+    moss: '#c8d890', mossLit: '#f0f8c8', mossDark: '#8ca060', mossShade: '#5c6c40',
+    vine: '#a0b070', vineDark: '#5c6c40', vineLit: '#e0f0b0',
+    water: { body: '#4c6680', deep: '#2c3e56', surf: '#e8dcc0', lit: '#fff6dc' },
+  },
+  // where the Stillness has passed: a pale sky with no wind in it, frost on
+  // grey rock, nothing growing
+  frost: {
+    sky: ['#2a2c40', '#4a4e68', '#7c809c', '#b8bcd4'],
+    stars: 0.6, star: '240,244,255', cloud: '230,236,250', haze: 'rgba(200,206,230,0.14)',
+    orb: { x: 400, y: 60, r: 14, lit: '#f6f8ff', dim: '#d6dcef', glow: '230,236,255' },
+    ridges: [
+      { col: '#5a5e78', rim: '#8a8ea8', shade: '#4c5068', snow: 'rgba(245,248,255,0.45)' },
+      { col: '#4c5068', rim: '#787c98', shade: '#40445a', snow: 'rgba(240,244,255,0.30)' },
+      { col: '#40445a', rim: '#646884', shade: '#363a4e' },
+      { col: '#35384c', rim: '#545872', shade: '#2c2f40' },
+    ],
+    bands: [
+      { mid: '#6a6e84', lit: '#8e92aa', dark: '#52566a', vein: '#d0d6ee' },
+      { mid: '#585c70', lit: '#747890', dark: '#44475a', vein: '#a8aec8' },
+      { mid: '#45485a', lit: '#585c70', dark: '#353846', vein: '#80869e' },
+      { mid: '#35384a', lit: '#44475a', dark: '#282a36', vein: '#5e6478' },
+    ],
+    edge: '#dde2f4', edgeDim: '#9ea4bc', rockDeep: '#262834',
+    moss: '#eef2ff', mossLit: '#ffffff', mossDark: '#b8bed8', mossShade: '#868ca6',
+    vine: '#c8cee6', vineDark: '#868ca6', vineLit: '#f4f6ff',
+  },
+  // the glacier: a hard blue sky over blue-white ice and the dark rock under
+  // it, snow where anything would grow, and meltwater the colour of glass
+  glacier: {
+    sky: ['#0c1630', '#1c3460', '#3f6a9c', '#a8d0ea'],
+    stars: 0.8, star: '236,248,255', cloud: '220,240,255', haze: 'rgba(190,226,250,0.14)',
+    orb: { x: 120, y: 54, r: 11, lit: '#f4fbff', dim: '#cfe4f4', glow: '210,236,255' },
+    ridges: [
+      { col: '#4e6e96', rim: '#9cc4e4', shade: '#405e84', snow: 'rgba(240,250,255,0.6)' },
+      { col: '#3e5a80', rim: '#80a8cc', shade: '#344e70', snow: 'rgba(236,248,255,0.4)' },
+      { col: '#304a6c', rim: '#62889e', shade: '#283f5c' },
+      { col: '#243a58', rim: '#4a6a88', shade: '#1c304a' },
+    ],
+    bands: [
+      { mid: '#5a7898', lit: '#86a8c8', dark: '#46627e', vein: '#d6f0ff' },
+      { mid: '#46607e', lit: '#62809e', dark: '#364c66', vein: '#a8d4f0' },
+      { mid: '#34485e', lit: '#46607e', dark: '#283a4c', vein: '#7aa8c8' },
+      { mid: '#26364a', lit: '#34485e', dark: '#1c2838', vein: '#5a82a2' },
+    ],
+    edge: '#dcf2ff', edgeDim: '#94b8d4', rockDeep: '#18222e',
+    moss: '#eef8ff', mossLit: '#ffffff', mossDark: '#b4d2e8', mossShade: '#7e9cb8',
+    vine: '#bfe0f4', vineDark: '#7e9cb8', vineLit: '#f0faff',
+    water: { body: '#2f7aa6', deep: '#1c4c70', surf: '#dcf8ff', lit: '#ffffff' },
+  },
   // deep down where the rock runs hot: charcoal stone, glowing seams, ember
   // growth instead of moss
   ember: {
@@ -172,6 +263,10 @@ export class Renderer {
     this.shiftX = 0;     // how far the frame draws the body off its last step
     this.shiftY = 0;     // (see Game.draw); the scarf follows it
     this.vaultKey = 'C'; // whatever the vault key is bound to, for the cue's key cap
+    // Water is drawn live (its surface never sits still), in the theme's own
+    // colours if it has any, taken now while TH is this level's.
+    this.waterCol = TH.water ?? { body: '#245f8f', deep: '#173f66', surf: '#9fe0ff', lit: '#e6f8ff' };
+    this.hasWater = level.tiles.includes(T.WATER);
     this.time = 0;       // world time — slows down with the world
     this.rt = 0;         // wall-clock time — the burst streaks ride this
     this.zoom = 1;
@@ -313,7 +408,8 @@ export class Renderer {
       }
     }
 
-    if (!up) {                                   // mossy cap
+    if (!up && L.isIce(tx, ty)) this.#iceCap(g, tx, ty, x, y);
+    else if (!up) {                              // mossy cap
       g.fillStyle = TH.mossLit;
       g.fillRect(x, y, TILE, 1);
       g.fillStyle = TH.moss;
@@ -344,6 +440,30 @@ export class Renderer {
     g.fillStyle = TH.edgeDim;
     if (!lf && !dn) g.fillRect(x, y + TILE - 3, 1, 3);
     if (!rt && !dn) g.fillRect(x + TILE - 1, y + TILE - 3, 1, 3);
+  }
+
+  /** A sheet of ice over the rock: glassy, pale, with a glint or two in it and
+   *  a ragged underside, so it reads as something you will not stop on. */
+  #iceCap(g, tx, ty, x, y) {
+    g.fillStyle = C.iceLit;
+    g.fillRect(x, y, TILE, 1);
+    g.fillStyle = C.ice;
+    g.fillRect(x, y + 1, TILE, 3);
+    g.fillStyle = C.iceMid;
+    g.fillRect(x, y + 4, TILE, 1);
+    for (let px = 0; px < TILE; px++) {
+      const d = hash(tx * 16 + px, ty * 5);
+      g.fillStyle = C.iceMid;
+      if (d > 0.45) g.fillRect(x + px, y + 5, 1, 1);
+      g.fillStyle = C.iceDark;
+      if (d > 0.8) g.fillRect(x + px, y + 6, 1, 1);
+    }
+    g.fillStyle = C.iceLit;                      // a diagonal glint across some
+    if (hash(tx, ty * 9) > 0.55) {
+      const gx = x + 3 + Math.floor(hash(tx, ty) * 8);
+      g.fillRect(gx, y + 1, 2, 1);
+      g.fillRect(gx + 2, y + 2, 1, 1);
+    }
   }
 
   #drawSlope(g, L, t, tx, ty, x, y) {
@@ -425,7 +545,7 @@ export class Renderer {
         const x = tx * TILE, y = ty * TILE;
 
         // grass tufts along exposed rock tops
-        if (t === T.SOLID && !rock(L, tx, ty - 1) && L.get(tx, ty - 1) === T.EMPTY) {
+        if (t === T.SOLID && !rock(L, tx, ty - 1) && L.get(tx, ty - 1) === T.EMPTY && !L.isIce(tx, ty)) {
           for (let i = 0; i < 3; i++) {
             const px = x + 2 + i * 5 + Math.floor(hash(tx * 5 + i, ty) * 2);
             const n = hash(px, ty * 3 + i);
@@ -532,12 +652,14 @@ export class Renderer {
 
     this.#entities(game, ox, oy);
     this.#particles(fx, ox, oy, false);
-    if (!p.dead && !this.hideActors) {
+    if (p.sinking && !this.hideActors) this.#sinking(p, ox, oy);
+    else if (!p.dead && !this.hideActors) {
       this.#shadow(p, ox, oy);
       this.#player(p, ox, oy);
       this.#cue(p, ox, oy);
     }
     this.#particles(fx, ox, oy, true);
+    if (this.level.chase && !this.hideActors) this.#stillness(this.level.chase, ox);
 
     if (zooming) {
       this.ctx = screen;
@@ -645,6 +767,7 @@ export class Renderer {
     const t = this.time;
 
     this.#furniture(L, ox, oy);
+    if (this.hasWater) this.#water(L, ox, oy);
 
     for (const s of L.signs) {
       const x = Math.round(s.x - ox), y = Math.round(s.y - oy);
@@ -754,6 +877,77 @@ export class Renderer {
   }
 
   /** The blocks and pads that change while you play (mechanics.js). */
+  /** The Stillness: everything behind its front washed pale and stopped
+   *  dead, motes hanging where they froze, the front itself a crystal edge
+   *  that will not hold still. Behind you and out of sight, a cold glow on
+   *  the left of the screen grows as it closes. */
+  #stillness(ch, ox) {
+    const { ctx } = this;
+    const fx = Math.round(ch.x - ox);
+    if (fx > 0) {
+      const w = Math.min(VIEW_W, fx);
+      ctx.fillStyle = 'rgba(206,216,236,0.58)';
+      ctx.fillRect(0, 0, w, VIEW_H);
+      ctx.fillStyle = '#ffffff';                 // frozen motes, fixed in the world
+      for (let gx = Math.floor(ox / 22); gx * 22 - ox < w; gx++) {
+        for (let gy = 0; gy < VIEW_H / 22 + 1; gy++) {
+          if (hash(gx, gy) < 0.7) continue;
+          const mx = gx * 22 - ox + Math.floor(hash(gy, gx) * 20), my = gy * 22 + Math.floor(hash(gx + 9, gy) * 20);
+          if (mx < w - 2) ctx.fillRect(mx, my, 1, 1);
+        }
+      }
+      for (let y = 0; y < VIEW_H; y += 3) {     // the front, glittering
+        const j = Math.floor(hash(Math.floor(y / 3), Math.floor(this.rt * 14)) * 7);
+        ctx.fillStyle = j > 4 ? '#ffffff' : '#e4ecfa';
+        ctx.fillRect(fx - j, y, j + 1, 3);
+      }
+    } else {
+      const k = clamp01(1 - (ox - ch.x) / 280);
+      for (let i = 0; i < 18 && k > 0; i++) {
+        ctx.fillStyle = `rgba(226,234,250,${(k * 0.4 * (1 - i / 18)).toFixed(3)})`;
+        ctx.fillRect(i, 0, 1, VIEW_H);
+      }
+    }
+  }
+
+  /** Water: a body in the theme's blues, and a surface that keeps moving, so
+   *  it reads as something you cannot stand still on. */
+  #water(L, ox, oy) {
+    const { ctx } = this;
+    const W = this.waterCol, t = this.time;
+    const tx0 = Math.max(0, Math.floor(ox / TILE)), tx1 = Math.min(L.w - 1, Math.floor((ox + VIEW_W) / TILE));
+    const ty0 = Math.max(0, Math.floor(oy / TILE)), ty1 = Math.min(L.h - 1, Math.floor((oy + VIEW_H) / TILE));
+    for (let ty = ty0; ty <= ty1; ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) {
+        if (L.get(tx, ty) !== T.WATER) continue;
+        const x = tx * TILE - ox, y = ty * TILE - oy;
+        const top = L.waterTop(tx, ty);
+        ctx.fillStyle = top ? W.body : W.deep;
+        ctx.fillRect(x, y + (top ? 2 : 0), TILE, TILE - (top ? 2 : 0));
+        if (!top) continue;
+        // the surface: a lit line riding a slow swell, flecks of light on it
+        for (let i = 0; i < TILE; i += 2) {
+          const wx = tx * TILE + i;
+          const dy = Math.round(Math.sin(wx * 0.19 + t * 3.1) * 1.1 + Math.sin(wx * 0.07 - t * 1.7) * 0.8);
+          ctx.fillStyle = W.surf;
+          ctx.fillRect(x + i, y + 1 + dy, 2, 1);
+          ctx.fillStyle = W.body;
+          ctx.fillRect(x + i, y + 2 + dy, 2, 2);
+          if (hash(Math.floor(wx / 2), Math.floor(t * 2.5)) > 0.93) {
+            ctx.fillStyle = W.lit;
+            ctx.fillRect(x + i, y + dy, 1, 1);
+          }
+        }
+        if (hash(tx, ty) > 0.6) {                // a slow glint below the surface
+          ctx.globalAlpha = 0.18 + 0.12 * Math.sin(t * 1.3 + tx);
+          ctx.fillStyle = W.surf;
+          ctx.fillRect(x + 3 + Math.floor(hash(tx, 3) * 8), y + 7, 4, 1);
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+  }
+
   #furniture(L, ox, oy) {
     const { ctx } = this;
     const t = this.time;
@@ -883,7 +1077,7 @@ export class Renderer {
     this.ctx.fillRect(x + 1, y - 1, w - 2, 1);
   }
 
-  #player(p, ox, oy) {
+  #player(p, ox, oy, alpha = 1) {
     const { ctx } = this;
     const dir = p.facing > 0 ? 0 : 1;
 
@@ -893,7 +1087,7 @@ export class Renderer {
       ctx.globalAlpha = Math.max(0, g.life / (g.max ?? 0.22)) * (g.alpha ?? 0.45);
       ctx.drawImage(img, Math.round(g.x + (p.w - SPRITE_W) / 2 - ox), Math.round(g.y + g.h - SPRITE_H - oy));
     }
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = alpha;
 
     this.#drawScarf(p, ox, oy);
 
@@ -908,6 +1102,24 @@ export class Renderer {
       ctx.fillStyle = p.t.dashCool > 0 ? '#5a7fae' : '#9cf6ff';
       ctx.fillRect(px + (dir ? 6 : 8), py + 12, 2, 1);
     }
+    ctx.globalAlpha = 1;
+  }
+
+  /** In the water: what is above the surface is drawn as it is, and what is
+   *  below it shows faintly through the water, so you watch yourself wade and
+   *  sink instead of standing in front of it. */
+  #sinking(p, ox, oy) {
+    const { ctx } = this;
+    const sy = Math.round(p.sinkSurface + 2 - oy);   // where the drawn body of water starts
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, VIEW_W, sy); ctx.clip();
+    this.#player(p, ox, oy);
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, sy, VIEW_W, VIEW_H - sy); ctx.clip();
+    this.#player(p, ox, oy, p.struggle > 0 && p.struggle < 0.15 ? p.struggle * 2 : 0.3);
+    this.#cue(p, ox, oy);              // a bank in reach: C pulls you out
+    ctx.restore();
   }
 
   #drawScarf(p, ox, oy) {
@@ -926,15 +1138,18 @@ export class Renderer {
 
   /** The prompt: a key cap over the character and a marker on the lip. */
   #cue(p, ox, oy) {
+    // A ledge up gets a prompt (one you do not call is a wall), and so does a
+    // downhill, where a roll runs away with you. A ledge down costs nothing to
+    // run off, so a roll there is never asked for.
     const c = p.cue;
-    const late = !c && p.t.refund > 0;        // missed the lip — roll out of the landing
-    if ((!c && !late) || p.vault) return;
+    const roll = p.rollHere;
+    if (p.vault || (!roll && (!c || c.kind !== 'up'))) return;
     const { ctx } = this;
-    const up = c ? c.kind === 'up' : false;
+    const up = !roll;
     const col = up ? C.cueUp : C.cueDown;
     const pulse = 0.62 + 0.38 * Math.sin(this.time * 13);
 
-    if (c) {                                   // bracket on the spot you would land
+    if (c && up) {                             // bracket on the spot you would land
       const lx = Math.round(c.x - ox), ly = Math.round(c.y + p.h - oy);
       ctx.globalAlpha = 0.3 + pulse * 0.35;
       ctx.fillStyle = col;

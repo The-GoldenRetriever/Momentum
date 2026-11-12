@@ -140,6 +140,7 @@ const TORSO = {
 
 // Arms are painted over the torso rows, so they read as being in front.
 const ARMS = {
+  none: rows(BLANK, BLANK, BLANK, BLANK, BLANK),
   idle: rows(
     '................',
     '..kCk......kck..',
@@ -601,6 +602,19 @@ const ROLL_STAGES = [
   )),
 ];
 
+// both arms up past the head, reaching for air
+const STRUGGLE_UP = over(body('stand', { arms: 'none', head: 'up' }), rows(
+  '.ksk........ksk.',
+  '.kck........kck.',
+  '.kck........kck.',
+  '.kck........kck.',
+  '.kck........kck.',
+  '.kck........kck.',
+  '.kck........kck.',
+  '.kCk........kck.',
+  '..kCk......kck..',
+));
+
 const ROLL = [
   ROLL_STAGES[0],                       // step off the edge and tuck
   sheet(BALL),                          // ... and away it goes, one ball turned
@@ -647,6 +661,10 @@ export const FRAMES = {
   crouch: [CROUCH_POSE],
   vault: VAULT_UP,
   roll: ROLL,
+  // carried along on ice with the stick let go: arms out for balance
+  glide: [body('stand', { arms: 'brace', lean: 1 })],
+  // head going under: arms thrown up out of the water, then flung out wide
+  struggle: [STRUGGLE_UP, body('stand', { arms: 'brace', head: 'up', drop: 1 })],
 };
 
 /** How many frames each animation owns — the player uses this to cycle. */

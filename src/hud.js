@@ -70,9 +70,9 @@ export function drawHud(ctx, game) {
   if (p.bursting || p.burstWind > 0) chips.push(['burst', '#9cf6ff']);
   else if (p.canBurst) chips.push([`${key('burst', 'v')}: burst ready`, '#ffffff']);
   if (p.vault) chips.push([p.vault.kind === 'up' ? 'vault' : 'roll', '#ffe6a8']);
-  else if (p.rolling > 0) chips.push(['roll', '#ffe6a8']);
-  else if (p.cue) chips.push([`${key('vault', 'c')}: ${p.cue.kind === 'up' ? 'vault' : 'roll'}`, '#ffd678']);
-  else if (p.t.refund > 0) chips.push([`${key('vault', 'c')}: roll out`, '#ff9ecd']);
+  else if (p.slopeRoll || p.rolling > 0) chips.push(['roll', '#ffe6a8']);
+  else if (p.cue?.kind === 'up') chips.push([`${key('vault', 'c')}: vault`, '#ffd678']);
+  else if (p.rollHere) chips.push([`${key('vault', 'c')}: roll`, '#ffd678']);
   if (p.dashing) chips.push(['dash', '#9cf6ff']);
   if (p.sliding) chips.push(['slide', '#ffd678']);
   if (p.wallDir !== 0) chips.push(['wall', '#cbb9ff']);

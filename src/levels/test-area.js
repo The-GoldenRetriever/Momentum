@@ -42,17 +42,15 @@ export function buildTestArea() {
   L.sign(36, GY - 1, 'FALL', [
     'Down + jump drops through thin platforms.',
     'Hold DOWN in the air to fall faster.',
-    'Landing on your feet costs speed, and the longer',
-    'you were in the air the more it costs. C on the way',
-    'off the lip, or just after landing, keeps all of it.',
+    'Coming down never costs you anything, however far:',
+    'land running and keep going.',
   ]);
 
   // ======================================================== B — auto ledges
   L.sign(41, GY - 1, 'LEDGES', [
-    'Five up, five down. Call every one of them with C.',
-    'Up is a vault, down is a roll — both keep all of it.',
-    'HOLD C on the way down and you roll off every one.',
-    'Scuffed a landing? Hit C late and you get it back.',
+    'Five up, five down. Every ledge up wants a C: one you',
+    'do not call is a wall. Down, just run off them (hold',
+    'C and you roll off each one, if you like the look).',
   ]);
   ground(40, 44);
   L.stairs(44, GY - 1, 5, 3, +1, H - 1);   // five 1-tile steps up
@@ -62,8 +60,9 @@ export function buildTestArea() {
 
   // ============================================================ C — slopes
   L.sign(81, GY - 1, 'SLOPES', [
-    'Ramps convert height into speed.',
-    'Run down the long one and clear the gap.',
+    'Running down a slope gives you a little speed.',
+    'ROLL down it (C, on the way down) and it gives a lot:',
+    'well past top gear, and you keep it off the bottom.',
   ]);
   L.ramp(86, GY - 1, 8, +1, H - 1);        // up
   ground(94, 99, GY - 8);
