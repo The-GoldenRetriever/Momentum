@@ -135,8 +135,9 @@ export const P = {
   // --- water --------------------------------------------------------------
   WATER_SKIM: 280,           // run on water at this, upright: under it, or
                              // sliding, or ducked, and you go through it
-  WATER_FLOW: 1,             // ... and only on a full bar: speed alone (a pad,
-                             // a slope, a dash) is not enough without the flow
+  WATER_FLOW: 1,             // ... and only on at least one bar: speed alone
+                             // (a pad, a slope, a dash, a burst) is not enough
+                             // without the flow
   WATER_HIGH: 160,           // px fallen (from the top of the arc, or from the
                              // end of a dash) past which water is no floor: a
                              // dash just before the surface breaks the fall.
@@ -283,14 +284,14 @@ export class Player {
     if (this.rolling <= 0.02) this.rolling = P.ROLL_TIME;      // the tumble loops
   }
 
-  /** Fast enough, on a full bar, and upright, to run on water (see Level.skim).
-   *  A burst counts whatever it has left in the bar: it is the fastest thing
-   *  there is, and a burst that sank you halfway across would be a trap.
-   *  Coming down on it from a great height you go straight through, unless a
-   *  dash broke the fall just before. */
+  /** Fast enough, on at least one bar, and upright, to run on water (see
+   *  Level.skim). A burst gets no exemption: it drains the bar, and once that
+   *  is under one bar the water lets you through, so bursting across a sea is
+   *  a gamble on how much bar you started with. Coming down on it from a great
+   *  height you go straight through, unless a dash broke the fall just before. */
   #skimming() {
     return !this.sliding && !this.crouching && Math.abs(this.vx) >= P.WATER_SKIM &&
-           (this.flow >= P.WATER_FLOW || this.bursting) && !this.#plunging();
+           this.flow >= P.WATER_FLOW && !this.#plunging();
   }
 
   /** Falling from higher than water will hold you? A dash resets the height
