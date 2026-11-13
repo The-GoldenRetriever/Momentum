@@ -21,6 +21,11 @@ export const M = {
                              // on the ground, so a pad wants a jump soon after
   BOOST_FLOW: 0.12,
 
+  PAD_SIDE: 600,             // a side pad fires you this fast its way ...
+  PAD_LIFT: 220,             // ... and up this much, to carry you
+  PAD_DOWN: 640,             // a ceiling pad slams you down this fast
+  PAD_REST: 0.3,             // ... and none fires twice inside this
+
   STILL_START: 0.5,          // the Stillness sets off at this share of its pace
   STILL_GATHER: 6,           // ... and is at all of it this many seconds later
 };
@@ -111,6 +116,17 @@ export function updateMechanics(L, p, dt) {
     }
   }
 
+  // ---- bounce pads: touch one and it throws you its way. A side pad hanging
+  // in the air is a step across a gap too wide for any jump; one facing back
+  // at you is a trap to get under or over; a pad on a ceiling slams you down.
+  for (const b of L.pads) {
+    if (b.t > 0) { b.t = Math.max(0, b.t - dt); continue; }
+    if (!alive || p.vault) continue;
+    if (p.x + p.w <= b.x || p.x >= b.x + b.w || p.footY <= b.y || p.y >= b.y + b.h) continue;
+    b.t = M.PAD_REST;
+    p.padLaunch(b.dir, b.dir === 'down' ? M.PAD_DOWN : M.PAD_SIDE, M.PAD_LIFT);
+  }
+
   // ---- boost pads: only with your feet on them, and never inside a burst or
   // a vault, which own your speed outright.
   for (const b of L.boosts) {
@@ -137,4 +153,5 @@ export function resetMechanics(L, fromX = null) {
   for (const c of L.crumbles) { c.state = 'idle'; c.t = 0; L.set(c.tx, c.ty, T.CRUMBLE); }
   for (const b of L.boosts) b.t = 0;
   for (const s of L.springs) s.t = 0;
+  for (const b of L.pads) b.t = 0;
 }

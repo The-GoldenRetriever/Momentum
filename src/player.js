@@ -54,7 +54,10 @@ export const P = {
   SUPER_WINDOW: 0.16,        // jump this soon after a dash for a super / hyper
   SUPER_X: 450,
   HYPER_X: 500,
-  WAVEDASH_X: 500,
+  WAVEDASH_X: 500,           // a slide-dash hands off at least this fast ...
+  SLIDE_DASH_BONUS: 100,     // ... and this much over what a dash would have
+                             // (but never faster than the dash itself, unless
+                             // you were already going faster than that)
   WAVEDASH_BLEED: 90,        // px/s per second more drag on a wavedash's speed
                              // while it runs over top speed: sliding on with it,
                              // it used to outlast a plain dash's by seconds
@@ -167,6 +170,17 @@ export const P = {
   STRUGGLE_TIME: 0.75,       // ... after this long fighting at the surface
   STRUGGLE_UNDER: 0.2,       // the last of which is going under for good
 
+  // --- goo ------------------------------------------------------------------
+  GOO_MAX: 110,              // stood in goo, this is as fast as you go
+  GOO_DRAG: 1600,            // ... and anything over it is torn off this fast
+  GOO_JUMP: 0.62,            // a jump out of goo gets this much of its lift
+  GOO_DRAIN: 1.2,            // bar per second it soaks up while you are in it
+
+  // --- wind -----------------------------------------------------------------
+  WIND_RISE: 330,            // an updraft lifts you no faster than this
+  WIND_FLOOR: 160,           // a headwind never holds you below this: stopped in
+                             // one, you could otherwise only crawl
+
   // --- ice ------------------------------------------------------------------
   ICE_FRICTION: 70,          // let go on ice and you glide on (FRICTION is 2300)
   ICE_GRIP: 0.55,            // the feet spin: building speed takes longer
@@ -218,6 +232,8 @@ export class Player {
     this.sinkSurface = 0;
     this.airTop = y + P.H;     // the highest the feet have been since solid footing
     this.onIce = false;        // standing on ice (Level.iceUnder), as of the last step
+    this.onGoo = false;        // ... in goo (Level.gooUnder)
+    this.windDv = 0; this.windAx = 0; this.windAy = 0;   // the wind where you are (#windRead)
     this.gliding = false;      // on ice with the stick let go: carried along
     this.dashes = 1;
     this.maxDashes = 1;
@@ -240,7 +256,11 @@ export class Player {
     this.vaults = 0;
     this.rolling = 0;          // the roll animation's clock
     this.slopeRoll = false;    // tucked and rolling down a slope (see #slopeRollStep)
+    this.diving = false;       // a slide in the air: head first, till you land (see #dive)
+    this.diveRoll = false;     // ... and the roll it lands in, before any slide
     this.waveRun = false;      // running on a wavedash's speed (see WAVEDASH_BLEED)
+    this.slideDash = false;    // the dash going now is a slide-dash (see #slideDash)
+    this.slideDashed = false;  // ... and its slide is still going: no bar till you stand
     this.bursting = false;     // full-flow sprint: very fast, world in slow motion
     this.burstWind = 0;        // winding up: real seconds left before it fires
     this.burstSlow = false;    // coming down off a burst's speed: the bar waits
@@ -393,6 +413,7 @@ export class Player {
     this.t.dash = 0;
     this.t.vaultBuf = 0;
     this.slopeRoll = false;
+    this.diving = false;          // (into the water, a dive is over: you wade, or slide on)
     this.bursting = false;
     this.burstWind = 0;
     this.burstTail = 0;
@@ -647,8 +668,10 @@ export class Player {
       this.vy = this.dashDir.y * this.dashSpeed;
       if (t.dash <= 0) this.#endDash();
     } else {
+      this.#windRead();
       this.#horizontal(dt, ix);
       this.#vertical(dt, iy);
+      this.#wind(dt);
     }
 
     // --- jumps ------------------------------------------------------------
@@ -675,6 +698,11 @@ export class Player {
     this.#moveY(this.vy * dt, dt);
     this.#unstick();
     this.onIce = this.grounded && L.iceUnder(this.x, this.x + this.w, this.footY);
+    this.onGoo = this.grounded && L.gooUnder(this.x, this.x + this.w, this.footY);
+    // every stride in it throws up a gob (the goo's own violet, as render.js
+    // draws it on the swamp)
+    if (this.onGoo && Math.abs(this.vx) > 20 && Math.random() < dt * 16)
+      this.fx.dust(this.cx - Math.sign(this.vx) * 3, this.footY, -Math.sign(this.vx) * 25, 1, '#c27cf0');
 
     // --- ground state, flow, feedback -------------------------------------
     if (this.grounded) {
@@ -683,6 +711,7 @@ export class Player {
       if (!this.wasGrounded) this.#onLand();
     }
     this.#walls();
+    this.#dive(iy);
     this.#vaultScan(dt, ix, iy);
     this.#skidState(dt, ix);
     this.#flow(dt, ix, realDt);
@@ -704,8 +733,13 @@ export class Player {
   // --------------------------------------------------------------- movement
   #horizontal(dt, ix) {
     if (this.bursting) { this.vx = this.burstDir * P.BURST_SPEED; return; }
-    const top = this.crouching ? P.CROUCH_MAX : this.topSpeed;
+    // (ducked, you shuffle; but the roll a dive lands in keeps every bit of
+    //  its speed, under a low roof or not)
     const onGround = this.grounded;
+    // (and in goo, its crawl is your top speed: running must not fight the
+    //  drag; and wind moves it, a headwind down, a tailwind up)
+    const top = onGround && this.onGoo ? Math.min(P.GOO_MAX, this.topSpeed)
+              : this.crouching && !this.diveRoll ? P.CROUCH_MAX : this.#windTop();
     // Ice: let go and you glide on, the feet spin when you push, and turning
     // round takes an age. It never takes speed away; it just will not let you
     // stop, or get going, in a hurry.
@@ -732,16 +766,19 @@ export class Player {
       this.vx -= Math.sign(this.vx) * Math.min(fr, Math.abs(this.vx));
     }
 
-    // A wavedash (a slide-dash) hands you more than a dash does; on the
-    // ground it bleeds off a little faster than other overspeed, so it is a
-    // burst of pace, not a gear. But only down to what a plain dash would have
-    // handed you (dashCarry: the run you were making, plus what running would
-    // have added through the dash), never below it: it used to bleed all the
-    // way to top speed, and a slide-dash came out slower than a dash did.
+    // The extra a slide-dash hands you: slid on, it bleeds off a little faster
+    // than a slide's own friction would take it, so it is a burst of pace, not
+    // a gear; stood up, it runs off as any overspeed does.
     if (this.waveRun) {
-      const floor = Math.max(this.topSpeed, this.waveFloor ?? 0);
+      const floor = this.topSpeed;
       if (this.dashing || Math.abs(this.vx) <= floor) this.waveRun = false;
-      else if (onGround) this.vx -= Math.sign(this.vx) * Math.min(P.WAVEDASH_BLEED * dt, Math.abs(this.vx) - floor);
+      else if (onGround && this.sliding) this.vx -= Math.sign(this.vx) * Math.min(P.WAVEDASH_BLEED * dt, Math.abs(this.vx) - floor);
+    }
+
+    // Goo: whatever you are doing, it tears you down to a crawl (a slide stops
+    // dead in it, a dash's hand-off with it), and it holds you there.
+    if (onGround && this.onGoo && Math.abs(this.vx) > P.GOO_MAX) {
+      this.vx -= Math.sign(this.vx) * Math.min(P.GOO_DRAG * dt, Math.abs(this.vx) - P.GOO_MAX);
     }
 
     // slopes: downhill is free speed, uphill costs a little
@@ -767,6 +804,70 @@ export class Player {
     }
   }
 
+  /** Your top speed as the wind leaves it (but never under WIND_FLOOR). */
+  #windTop() {
+    return this.windDv < 0 ? Math.max(Math.min(this.topSpeed, P.WIND_FLOOR), this.topSpeed + this.windDv)
+                           : this.topSpeed + this.windDv;
+  }
+
+  /** The wind where you are (Level.wind), summed over every box you are in:
+   *  how far it moves your top speed, how hard it pushes, and up or down. */
+  #windRead() {
+    this.windDv = 0; this.windAx = 0; this.windAy = 0;
+    for (const w of this.level.winds) {
+      if (this.cx < w.x || this.cx >= w.x + w.w || this.cy < w.y || this.cy >= w.y + w.h) continue;
+      this.windDv += w.dv; this.windAx += w.ax; this.windAy += w.ay;
+    }
+  }
+
+  /** Wind. Sideways it moves your top speed (#horizontal) and pushes you
+   *  towards the new one: a headwind holds you down to less than your legs
+   *  could do, a tailwind carries you past them, in the air as on the ground,
+   *  and neither runs away with you. Up or down it is a force: a downdraft
+   *  drags every jump down, an updraft lifts you, up to WIND_RISE. */
+  #wind(dt) {
+    if (this.windAx) {
+      const tgt = this.#windTop();
+      if (this.windAx > 0 && this.vx < tgt) this.vx = Math.min(tgt, this.vx + this.windAx * dt);
+      if (this.windAx < 0 && this.vx > tgt) this.vx = Math.max(tgt, this.vx + this.windAx * dt);
+    }
+    if (this.windAy) {
+      this.vy += this.windAy * dt;
+      if (this.windAy < 0) {
+        if (this.vy < -P.WIND_RISE) this.vy = -P.WIND_RISE;
+        this.grounded = false;
+      }
+    }
+  }
+
+  /** A bounce pad (mechanics.js): a side pad throws you its way at `speed`
+   *  (or your own speed, if that is more, going its way) and a little up; a
+   *  ceiling pad slams you down. Either hands your dash back, like a spring.
+   *  A burst turned round by one is over, as turning round always ends it. */
+  padLaunch(dir, speed, lift) {
+    if (dir === 'down') {
+      this.vy = speed;
+    } else {
+      const d = dir === 'right' ? 1 : -1;
+      if (this.bursting && d !== this.burstDir) this.#endBurst();
+      this.vx = d * Math.max(speed, Math.sign(this.vx) === d ? Math.abs(this.vx) : 0);
+      this.vy = Math.min(this.vy, -lift);
+      this.facing = d;
+    }
+    this.t.dash = 0;
+    this.grounded = false;
+    this.diving = false;
+    this.t.noSnap = 0.12;
+    this.dashes = this.maxDashes;
+    this.t.dashCool = 0;
+    this.t.refill = 0;
+    if (this.#tryStand()) this.sliding = false;
+    this.fx.burst(this.cx, this.cy, 12, dir === 'down' ? '#ff7ad8' : dir === 'right' ? '#7af0ff' : '#ff6a6a');
+    this.fx.ring(this.cx, this.cy, 16, dir === 'down' ? '#ff7ad8' : dir === 'right' ? '#7af0ff' : '#ff6a6a', 0.3);
+    this.fx.shake(3);
+    sfx.spring();
+  }
+
   #vertical(dt, iy) {
     if (this.grounded) return;
     if (this.wallDir !== 0 && this.vy > 0) {
@@ -789,7 +890,7 @@ export class Player {
     // the faster you are running, the more the jump lifts you: speed carries
     // into height, and height into distance
     const lift = clamp((Math.abs(this.vx) - P.RUN_BASE) * P.JUMP_SPEED_LIFT, 0, P.JUMP_LIFT_MAX);
-    this.vy = -(P.JUMP_V + lift);
+    this.vy = -(P.JUMP_V + lift) * (this.onGoo ? P.GOO_JUMP : 1);   // (goo holds your boots)
     // super / hyper: cash a fresh dash in for horizontal speed
     if (t.super > 0) {
       if (this.dashDir.y > 0) { this.vx = this.facing * P.HYPER_X; this.vy = -P.JUMP_V * 0.82; }
@@ -856,15 +957,35 @@ export class Player {
     // nothing hands the dash back while it is still going — a dash along the
     // floor touches the ground on every frame of itself
     this.t.refill = P.DASH_TIME + P.DASH_GAP;
-    // Only stand up if there is room: dashing out of a tunnel keeps the low
-    // profile rather than shoving the hitbox up into the rock.
-    if (this.#tryStand()) this.sliding = false;
+    // Aimed down and forward from the ground (a slide, say), it is a
+    // slide-dash. Otherwise stand up, if there is room: dashing out of a
+    // tunnel keeps the low profile rather than shoving the hitbox into rock.
+    this.slideDash = false;
+    if (this.grounded && this.dashDir.y > 0 && this.dashDir.x !== 0) this.#slideDash();
+    else if (this.#tryStand()) this.sliding = false;
     this.fallFrom = null;
     // (no bar for a dash, of either kind: it used to pay back 0.15 of one)
     this.fx.burst(this.cx, this.cy, 14, '#9cf6ff');
     this.fx.ring(this.cx, this.cy, 16, '#9cf6ff', 0.25);
     this.fx.shake(3.5);
     sfx.dash();
+  }
+
+  /** A slide-dash is a dash like any other (as long, as fast), but along the
+   *  floor and low, in a slide, and it hands off faster at the end (#endDash).
+   *  It used to be no dash at all: you were simply set going at 500 px/s.
+   *  One that comes down onto the floor mid-air turns into one there, for
+   *  what is left of it. */
+  #slideDash() {
+    this.slideDash = true;
+    this.dashDir = { x: Math.sign(this.dashDir.x), y: 0 };
+    this.vy = 0;
+    this.sliding = true;
+    this.crouching = false;
+    this.#setHeight(P.SLIDE_H);
+    this.fx.burst(this.cx, this.footY, 16, '#ffe6a8');
+    this.fx.ring(this.cx, this.footY, 18, '#ffe6a8', 0.3, true);
+    this.fx.shake(4);
   }
 
   #endDash() {
@@ -878,7 +999,18 @@ export class Player {
     // A dash hands off into a run faster than you can run, and never slower
     // than you were already going its way: dashing off a boost pad used to
     // drop you from 520 to 330, a dash that cost the speed it was meant to add.
-    this.vx = d.x !== 0 ? Math.sign(d.x) * Math.max(P.DASH_END, this.dashCarry ?? this.dashEntry ?? 0) : this.vx * 0.4;
+    const handoff = Math.max(P.DASH_END, this.dashCarry ?? this.dashEntry ?? 0);
+    this.vx = d.x !== 0 ? Math.sign(d.x) * handoff : this.vx * 0.4;
+    // A slide-dash keeps more: a hundred over what a dash would hand you, and
+    // at least WAVEDASH_X, up to the dash's own speed. You go on in the slide
+    // it left you in, and the bar waits until you are back on your feet.
+    if (this.slideDash) {
+      this.slideDash = false;
+      const keep = Math.max(handoff, Math.min(P.DASH_SPEED, Math.max(P.WAVEDASH_X, handoff + P.SLIDE_DASH_BONUS)));
+      this.vx = Math.sign(d.x) * keep;
+      this.waveRun = true;
+      this.slideDashed = true;
+    }
     this.vy = d.y < 0 ? -170 : 0;
     if (this.grounded) this.vy = 0;
     this.airTop = this.footY;      // a dash breaks a fall: water counts from here
@@ -886,7 +1018,9 @@ export class Player {
 
   #slideState(dt, iy, ix) {
     const wantsDown = iy > 0;
-    if (!this.sliding && this.grounded && wantsDown && Math.abs(this.vx) >= P.SLIDE_ENTER && !this.dashing) {
+    if (this.diveRoll && this.rolling <= 0) this.diveRoll = false;
+    // (out of a dive the roll plays first, and then the slide, if down is held)
+    if (!this.sliding && this.grounded && wantsDown && Math.abs(this.vx) >= P.SLIDE_ENTER && !this.dashing && !this.diveRoll) {
       this.sliding = true;
       this.crouching = false;
       // A burst survives a slide: the burst owns your speed either way, so
@@ -897,7 +1031,8 @@ export class Player {
       sfx.slide();
     } else if (this.sliding) {
       const tooSlow = Math.abs(this.vx) < P.SLIDE_EXIT;
-      if (!wantsDown && this.#canStand()) { this.sliding = false; this.#setHeight(P.H); }
+      // (a slide-dash holds you low to its end, as any dash commits you to it)
+      if (!wantsDown && this.#canStand() && !this.slideDash) { this.sliding = false; this.#setHeight(P.H); }
       else if (tooSlow) this.sliding = false;   // decays into a crouch, roof or not
       if (this.sliding && this.grounded && Math.random() < dt * 30)
         this.fx.dust(this.cx - Math.sign(this.vx) * 4, this.footY, -Math.sign(this.vx) * 40, 1);
@@ -907,7 +1042,7 @@ export class Player {
     const roofed = this.h < P.H && !this.#canStand();
     this.crouching = !this.sliding && this.grounded && (wantsDown || roofed);
     if (this.crouching && this.h === P.H) this.#setHeight(P.SLIDE_H);
-    else if (!this.crouching && !this.sliding) this.#tryStand();
+    else if (!this.crouching && !this.sliding && !this.diving) this.#tryStand();   // (a dive keeps low)
   }
 
   /** Carry "the speed and flow you had a moment ago" forward, so a vault called
@@ -1070,19 +1205,8 @@ export class Player {
     // Uphill slopes push you up instead of stopping you.
     if (this.grounded || this.wasGrounded) this.#slopeLift();
 
-    // Wavedash: a down-diagonal dash that meets the floor becomes raw speed.
-    if (this.grounded && this.dashing && this.dashDir.y > 0 && this.dashDir.x !== 0) {
-      this.#endDash();
-      this.vx = Math.sign(this.dashDir.x) * P.WAVEDASH_X;
-      this.vy = 0;
-      this.t.super = P.SUPER_WINDOW;
-      this.waveRun = true;
-      this.waveFloor = Math.max(P.DASH_END, this.dashCarry ?? 0);   // where its bleed stops, as a dash's hand-off
-      // (no bar of its own either: it used to add a quarter of one)
-      this.fx.burst(this.cx, this.footY, 16, '#ffe6a8');
-      this.fx.ring(this.cx, this.footY, 18, '#ffe6a8', 0.3, true);
-      this.fx.shake(4);
-    }
+    // A down-diagonal dash that meets the floor goes on as a slide-dash.
+    if (this.grounded && this.dashing && this.dashDir.y > 0 && this.dashDir.x !== 0) this.#slideDash();
   }
 
   #onOneWay() {
@@ -1140,10 +1264,38 @@ export class Player {
     }
   }
 
+  /** A slide in the air is a dive: down, moving at a slide's speed, and you go
+   *  head first, arms out ahead (falling fast, as down in the air always
+   *  does), and low, a slide's height. It lands in a roll that keeps all its
+   *  speed, and a roll with down still held runs on into a slide (#slideState
+   *  waits for the roll). A wall, a dash, a spring, a pad or a vault breaks
+   *  it off. */
+  #dive(iy) {
+    if (this.grounded || this.dashing || this.vault || this.wallDir !== 0 || this.sinking || this.bursting) {
+      if (!this.grounded) this.diving = false;
+      return;
+    }
+    if (iy > 0 && Math.abs(this.vx) >= P.SLIDE_ENTER && !this.diving) {
+      // a slide in the air is low, as a slide is: a dive goes through a gap
+      // in a wall too low to stand in
+      this.diving = true;
+      if (this.h === P.H) this.#setHeight(P.SLIDE_H);
+      this.fx.dust(this.cx, this.cy, -Math.sign(this.vx) * 50, 4, '#dff3ff');
+    }
+  }
+
   #onLand() {
     const impact = clamp(this.vy / P.FALL_MAX, 0, 1);
-    this.fx.dust(this.cx, this.footY, 0, 4 + impact * 8);
-    if (impact > 0.35) this.fx.ring(this.cx, this.footY, 8 + impact * 14, '#e8e2ff', 0.25, true);
+    if (this.diving) {                          // the dive comes down into a roll
+      this.diving = false;
+      this.diveRoll = true;
+      this.rolling = P.ROLL_TIME;
+      this.fx.dust(this.cx, this.footY, Math.sign(this.vx) * 40, 6);
+    }
+    const goo = this.level.gooUnder(this.x, this.x + this.w, this.footY);
+    this.fx.dust(this.cx, this.footY, 0, 4 + impact * 8, goo ? '#c27cf0' : undefined);
+    if (goo) this.fx.ring(this.cx, this.footY, 10, '#e0a8ff', 0.3, true);   // the splat
+    else if (impact > 0.35) this.fx.ring(this.cx, this.footY, 8 + impact * 14, '#e8e2ff', 0.25, true);
     this.t.land = 0.14;
     if (impact > 0.25) { this.fx.shake(impact * 5); sfx.land(); }
     // A landing never costs anything, however far it came down (it used to
@@ -1529,6 +1681,7 @@ export class Player {
     // at your own top speed the bar does not fill (it used to refill all the
     // way down from 560, on speed the burst paid for).
     if (this.burstSlow && sp <= this.topSpeed) this.burstSlow = false;
+    if (this.slideDashed && !this.sliding) this.slideDashed = false;   // stood up: the bar fills again
     // The top-off (burst on, past BURST_ARM): the last of the bar creeps in,
     // and it has to be earned in one go. Any speed lost since the last step,
     // through the top-off or the wind-up after it, and the bar drops back to
@@ -1547,14 +1700,16 @@ export class Player {
       // Nor does a dash fill it while it is going, of either kind. After it,
       // either kind, the run fills it as running always does (a slide-dash's
       // coast used to fill nothing, and left you a slower runner than a dash).
-      if (!this.burstSlow && !this.dashing) {
+      if (!this.burstSlow && !this.dashing && !this.slideDashed) {
         const creep = this.autoBurst && this.flow >= P.BURST_ARM && this.cx >= this.level.burstFrom;
         this.flow += dt * (creep ? P.TOPOFF_GAIN : P.FLOW_GAIN);
       }
     }
     else if (sp > 150 && this.gliding) { /* carried along on ice: the bar holds */ }
+    else if (this.windAy < 0 && !this.grounded) { /* carried up an updraft: so does it */ }
     else if (sp < 70) this.flow -= dt * P.FLOW_STALL;
     else this.flow -= dt * P.FLOW_DRAIN;
+    if (this.onGoo) this.flow -= dt * P.GOO_DRAIN;   // and goo soaks it up, run or no run
     this.flow = clamp(this.flow, 0, P.FLOW_MAX);
   }
 
@@ -1614,7 +1769,8 @@ export class Player {
 
     let name = 'idle';
     if (this.struggle > 0) name = this.struggle < P.STRUGGLE_UNDER ? 'drown' : 'struggle';
-    else if (this.dashing) name = 'dash';
+    else if (this.dashing) name = this.slideDash ? 'slide' : 'dash';
+    else if (this.diving && !this.grounded && !this.sinking) name = 'dive';
     else if (this.rolling > 0) name = 'roll';
     else if (this.sliding) name = 'slide';
     else if (this.crouching || this.h < P.H)
@@ -1676,6 +1832,7 @@ export class Player {
   // --------------------------------------------------------------- pickups
   bounce(power = P.SPRING_V) {
     this.vy = -power;
+    this.diving = false;
     this.grounded = false;
     if (this.#tryStand()) this.sliding = false;
     this.dashes = this.maxDashes;

@@ -63,6 +63,10 @@ export class Level {
     // Ice is a skin on rock, not a tile of its own: the cell stays SOLID for
     // every collision query, and only the feet (iceUnder) and the bake ask.
     this.icy = new Uint8Array(w * h);
+    // Goo is a skin on rock as well (see `goo`): it slows whatever stands in it
+    this.gooey = new Uint8Array(w * h);
+    this.pads = [];      // bounce pads on walls and ceilings (see `pad`)
+    this.winds = [];     // wind: boxes that push you while you are in them
   }
 
   get(tx, ty) {
@@ -153,6 +157,48 @@ export class Level {
     const ty = Math.floor((footY + 1) / TILE);
     for (let tx = Math.floor(x0 / TILE); tx <= Math.floor((x1 - 1) / TILE); tx++) if (this.isIce(tx, ty)) return true;
     return false;
+  }
+
+  /** Goo on the rock of row `ty`, `w` tiles from `tx`: stand in it and it
+   *  drags you down to a crawl, your jumps come out weak, and the bar drains
+   *  (see Player). The trick is never to touch it. */
+  goo(tx, ty, w = 1) {
+    for (let x = tx; x < tx + w; x++) if (x >= 0 && x < this.w && ty >= 0 && ty < this.h) this.gooey[ty * this.w + x] = 1;
+    return this;
+  }
+
+  isGoo(tx, ty) {
+    if (tx >= this.w) tx = this.w - 1;
+    if (tx < 0 || ty < 0 || ty >= this.h) return false;
+    return this.gooey[ty * this.w + tx] === 1 && this.get(tx, ty) === T.SOLID;
+  }
+
+  /** Is the floor under a box spanning x0..x1, feet at footY, goo? Any of
+   *  it: a boot in the goo is a boot stuck. */
+  gooUnder(x0, x1, footY) {
+    const ty = Math.floor((footY + 1) / TILE);
+    for (let tx = Math.floor(x0 / TILE); tx <= Math.floor((x1 - 1) / TILE); tx++) if (this.isGoo(tx, ty)) return true;
+    return false;
+  }
+
+  /** A bounce pad. `dir` is the way it fires: 'right' or 'left' (a plate two
+   *  tiles tall standing at tile tx, ty..ty+1: hanging in the air, or on a
+   *  wall), or 'down' (a plate two tiles wide on the underside of rock, at
+   *  row ty). Touch it and it throws you that way, and hands your dash back.
+   *  A pad that throws you back the way you came is a trap. */
+  pad(tx, ty, dir) {
+    const side = dir !== 'down';
+    this.pads.push({ x: tx * TILE + (side ? 4 : 0), y: ty * TILE + (side ? 0 : 0), w: side ? 8 : TILE * 2, h: side ? TILE * 2 : 6, dir, t: 0 });
+    return this;
+  }
+
+  /** Wind over the box of tiles (tx, ty, w, h). Sideways (`ax`, px/s^2) it
+   *  moves your top speed by `dv` (a quarter of `ax` unless given: a headwind
+   *  takes it away, a tailwind adds to it) and pushes you towards it at `ax`;
+   *  up or down (`ay`) it is a plain force (an updraft is a big negative `ay`). */
+  wind(tx, ty, w, h, ax, ay = 0, dv = ax * 0.25) {
+    this.winds.push({ x: tx * TILE, y: ty * TILE, w: w * TILE, h: h * TILE, ax, ay, dv });
+    return this;
   }
 
   /** A body of water, its surface on row `ty`, `depth` rows deep. */

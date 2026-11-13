@@ -74,7 +74,8 @@ export function makeSim(at = { x: 6, y: 26 }, custom = null, { warp = false } = 
 // slide the whole zone, never jumping in it),
 // `dash` (directions, pressed again and again until a dash starts; `vy`
 // waits for the top of a jump), `roll` (C held down the slope in it),
-// `vault` (never jump in it: a ledge across a gap, where the edge comes
+// `dive` (DOWN held all through it, no jumping: off a ledge into a dive, and
+// the roll and slide it lands in), `vault` (never jump in it: a ledge across a gap, where the edge comes
 // before the prompt does, and C at the prompt is the way over), `steady`
 // (nothing but running: the expert dashes in no zone, so it keeps it too) and
 // `autoburst` (V, once, as it comes in). Wall-jump shafts are climbed.
@@ -165,13 +166,16 @@ export function flatOut(build, from, phaseT, { tunnels = [], shafts = [], zones 
     fresh = !!p.cue;
     if (z && z.roll && !k.includes('vault')) k.push('vault');
     const ducking = inTunnel(x) || !!(z && z.slide);
-    if (p.grounded && hold === 0 && !p.cue && !ducking && !(z && (z.hop || z.vault)) && !quiet) {
+    if (p.grounded && hold === 0 && !p.cue && !ducking && !(z && (z.hop || z.vault || z.dive)) && !quiet) {
       const ahead = p.x + p.w + Math.max(6, Math.abs(p.vx) * 0.04);
       // no floor ahead, or spikes where your boots would go (a reef): jump
       const spikes = sim.level.boxHitsSpikes(ahead - 2, p.y + 10, 6, p.h);   // (boots and below)
-      if (spikes || sim.level.floorUnder(ahead, ahead + 2, p.footY - 1, p.footY + 40) === null) { k.push('jump'); hold = 40; letGoAt = -1; presses.push(step); }
+      // goo ahead is as good as a gap: never set foot in it
+      const goo = sim.level.gooUnder(ahead, ahead + 2, p.footY) && !p.onGoo;
+      if (spikes || goo || sim.level.floorUnder(ahead, ahead + 2, p.footY - 1, p.footY + 40) === null) { k.push('jump'); hold = 40; letGoAt = -1; presses.push(step); }
     }
     if (ducking && p.grounded) k.push('down');
+    if (z && z.dive && x >= (z.edge ?? z.at[0]) - 0.3) k.push('down');   // dive, roll and slide through
     // The expert chains dashes down every straight it can see: about an eighth
     // faster than running, and what a good player does on a run-up. Only on
     // level ground with ten clear tiles ahead, so it never meets an edge,
@@ -194,9 +198,12 @@ export function flatOut(build, from, phaseT, { tunnels = [], shafts = [], zones 
     if (onStep) onStep(pl, step, sim.level);
     if (!pl.dead && !pl.grounded) {
       // a kick, a dash or a spring re-aims the jump: it is committed to anew
-      const reaim = pl.wallDir !== 0 || pl.dashing || (air && pl.vy < air.vy - 200);
-      if (!air || reaim) air = { at: { x: cam.x, y: cam.y }, from: pl.cx / TILE, apex: null, vy: pl.vy };
+      // (a bounce pad is a re-aim as well: it throws you on far faster, or down)
+      const reaim = pl.wallDir !== 0 || pl.dashing || (air && pl.vy < air.vy - 200) ||
+                    (air && (Math.abs(pl.vx) > air.sp + 120 || pl.vy > air.vy + 300));
+      if (!air || reaim) air = { at: { x: cam.x, y: cam.y }, from: pl.cx / TILE, apex: null, vy: pl.vy, sp: Math.abs(pl.vx) };
       air.vy = pl.vy;
+      air.sp = Math.abs(pl.vx);
       if (!air.apex && pl.vy >= 0 && !pl.dashing) air.apex = [];
       if (air.apex) air.apex.push({ x: cam.x, y: cam.y });
     } else if (air && !pl.dead && pl.grounded) {

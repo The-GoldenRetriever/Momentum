@@ -234,6 +234,76 @@ export const THEMES = {
     vine: '#e05a22', vineDark: '#8a3214', vineLit: '#ffb060',
     ambient: 'embers', seams: true, underground: true,
   },
+  // Ricochet: a city's afterglow in a violet night, stone laced with cyan
+  // light, pink on every edge
+  neon: {
+    sky: ['#06020e', '#12062a', '#2a0b48', '#561466'],
+    stars: 0.5, star: '255,200,255', cloud: '255,90,216', haze: 'rgba(120,30,140,0.12)',
+    orb: { x: 360, y: 70, r: 16, lit: '#ff9ae8', dim: '#d860c0', glow: '255,120,230' },
+    ridges: [
+      { col: '#2a0c40', rim: '#7a2a90', shade: '#1c0830' },
+      { col: '#220a36', rim: '#6a2280', shade: '#170628' },
+      { col: '#1a082c', rim: '#5a1c70', shade: '#120520' },
+      { col: '#140622', rim: '#4a1660', shade: '#0e0418' },
+    ],
+    bands: [
+      { mid: '#2c2652', lit: '#423a78', dark: '#1c1838', vein: '#5ff2ff' },
+      { mid: '#241f44', lit: '#342d62', dark: '#16132c', vein: '#40c8e0' },
+      { mid: '#1c1836', lit: '#29234e', dark: '#110e22', vein: '#2a90a8' },
+      { mid: '#16132a', lit: '#201c3c', dark: '#0d0b1a', vein: '#1e6a80' },
+    ],
+    edge: '#ff5ad8', edgeDim: '#a03a90', rockDeep: '#0e0b1c',
+    moss: '#5ff2ff', mossLit: '#d8ffff', mossDark: '#1f9ab4', mossShade: '#126478',
+    vine: '#ff5ad8', vineDark: '#a02a8a', vineLit: '#ffb0f0',
+    flowers: ['#ff5ad8', '#ffe066'], ambient: 'neon', seams: true,
+  },
+  // The mire: a drowned forest at dusk, mud-green rock, goo where you would
+  // put your feet, will-o'-wisps
+  swamp: {
+    sky: ['#070d0a', '#122018', '#26392a', '#56603a'],
+    stars: 0.3, star: '230,255,200', cloud: '160,190,120', haze: 'rgba(80,110,60,0.16)',
+    orb: { x: 110, y: 96, r: 14, lit: '#e8f0b0', dim: '#b8c888', glow: '220,240,160' },
+    ridges: [
+      { col: '#1c2a1c', rim: '#3e5a34', shade: '#142014' },
+      { col: '#182418', rim: '#36502e', shade: '#111c11' },
+      { col: '#141f14', rim: '#2e4628', shade: '#0e170e' },
+      { col: '#101910', rim: '#263c22', shade: '#0b130b' },
+    ],
+    bands: [
+      { mid: '#4a4630', lit: '#625e40', dark: '#332f20', vein: '#8a9a4a' },
+      { mid: '#3e3a28', lit: '#524d36', dark: '#2a271a', vein: '#6f7c3c' },
+      { mid: '#312e20', lit: '#413d2b', dark: '#211f15', vein: '#55602e' },
+      { mid: '#262418', lit: '#333021', dark: '#191710', vein: '#424a24' },
+    ],
+    edge: '#a8b870', edgeDim: '#6e7a48', rockDeep: '#1a1810',
+    moss: '#6fae44', mossLit: '#b8e878', mossDark: '#3e7424', mossShade: '#264a16',
+    vine: '#5a9a3a', vineDark: '#30601e', vineLit: '#a8e070',
+    flowers: ['#e8d070', '#c08ad8'], ambient: 'wisps', trees: true,
+    goo: { body: '#9a4ad8', lit: '#e0a8ff', dark: '#4a1a78', bubble: '#f0d0ff' },
+  },
+  // The gale: a storm coming in over slate hills, rain driving sideways,
+  // lightning
+  storm: {
+    sky: ['#0a0e16', '#161e2c', '#283444', '#4a586a'],
+    stars: 0, star: '220,230,255', cloud: '150,170,200', haze: 'rgba(90,110,140,0.16)',
+    orb: null,
+    ridges: [
+      { col: '#283444', rim: '#4a5c74', shade: '#1e2836' },
+      { col: '#222c3a', rim: '#40506a', shade: '#19222e' },
+      { col: '#1c2430', rim: '#36445a', shade: '#141b25' },
+      { col: '#161d27', rim: '#2c384a', shade: '#10161e' },
+    ],
+    bands: [
+      { mid: '#4e5662', lit: '#6a7482', dark: '#383e48', vein: '#9ab0c8' },
+      { mid: '#424852', lit: '#59616e', dark: '#2f343c', vein: '#7a8ea6' },
+      { mid: '#343941', lit: '#454b55', dark: '#24282e', vein: '#5c6c80' },
+      { mid: '#282c33', lit: '#353a42', dark: '#1b1e23', vein: '#44505e' },
+    ],
+    edge: '#b4c4d8', edgeDim: '#74849a', rockDeep: '#1c1f25',
+    moss: '#6a9a6a', mossLit: '#a8d0a0', mossDark: '#3e6a44', mossShade: '#28462e',
+    vine: '#5a8a5e', vineDark: '#34583a', vineLit: '#9ac89a',
+    ambient: 'rain', trees: true, lightning: true,
+  },
 };
 
 // The theme being baked. Only ever read while a Renderer is being built, so
@@ -295,6 +365,10 @@ const AMBIENT = {
   snow: { n: 55, cols: ['#ffffff', '#e6f2ff'], drift: [-8, 22], wander: 9 },
   mist: { n: 24, cols: ['#ffffff', '#dde8f0'], drift: [-14, -2], wander: 4, faint: true },
   embers: { n: 36, cols: ['#ff9a3c', '#ffd070', '#ff6a2a'], glow: true, drift: [4, -30], wander: 10, blink: true },
+  neon: { n: 30, cols: ['#ff5ad8', '#5ff2ff', '#ffe066'], glow: true, drift: [-12, -4], wander: 8, blink: true },
+  wisps: { n: 18, cols: ['#c8ff8a', '#d8a8ff'], glow: true, drift: [5, -3], wander: 18, blink: true, low: true },
+  // rain is drawn as streaks, slanting with the wind (see #ambient)
+  rain: { n: 120, cols: ['#a8c0e0', '#d0e0f4'], drift: [-120, 520], wander: 0, streak: true },
 };
 
 export class Renderer {
@@ -315,6 +389,11 @@ export class Renderer {
       col: this.amb.cols[i % this.amb.cols.length],
     }));
     this.aurora = !!TH.aurora;
+    this.lightning = TH.lightning ? { next: 3 + hash(level.w, 1) * 4, flash: 0 } : null;
+    this.gooCol = TH.goo ?? { body: '#9a4ad8', lit: '#e0a8ff', dark: '#4a1a78', bubble: '#f0d0ff' };
+    this.gooTops = [];
+    for (let ty = 1; ty < level.h; ty++) for (let tx = 0; tx < level.w; tx++)
+      if (level.isGoo(tx, ty) && level.get(tx, ty - 1) !== T.SOLID) this.gooTops.push([tx, ty]);
     this.scarf = null;
     this.shiftX = 0;     // how far the frame draws the body off its last step
     this.shiftY = 0;     // (see Game.draw); the scarf follows it
@@ -541,7 +620,8 @@ export class Renderer {
       }
     }
 
-    if (!up && L.isIce(tx, ty)) this.#iceCap(g, tx, ty, x, y);
+    if (!up && L.isGoo(tx, ty)) this.#gooCap(g, tx, ty, x, y, lf, rt);
+    else if (!up && L.isIce(tx, ty)) this.#iceCap(g, tx, ty, x, y);
     else if (!up) {                              // grassy cap, ragged underneath
       g.fillStyle = TH.mossLit;
       g.fillRect(x, y, TILE, 1);
@@ -587,6 +667,31 @@ export class Renderer {
     g.fillStyle = TH.edgeDim;
     if (!lf && !dn) g.fillRect(x, y + TILE - 3, 1, 3);
     if (!rt && !dn) g.fillRect(x + TILE - 1, y + TILE - 3, 1, 3);
+  }
+
+  /** Goo over the rock: a thick, glossy, sagging layer that hangs over its
+   *  edges in drips, a highlight along its top, bubbles caught in it. Its
+   *  colours are the theme's, or a sickly violet. */
+  #gooCap(g, tx, ty, x, y, lf, rt) {
+    const G = TH.goo ?? { body: '#9a4ad8', lit: '#e0a8ff', dark: '#4a1a78', bubble: '#f0d0ff' };
+    g.fillStyle = G.lit; g.fillRect(x, y - 1, TILE, 1);
+    g.fillStyle = G.body; g.fillRect(x, y, TILE, 5);
+    for (let px = 0; px < TILE; px++) {
+      const sag = 1 + Math.floor(hash(tx * 16 + px, ty * 3) * 3);
+      g.fillStyle = G.body; g.fillRect(x + px, y + 5, 1, sag);
+      g.fillStyle = G.dark; g.fillRect(x + px, y + 5 + sag, 1, 1);
+      if (hash(tx * 7 + px, ty) > 0.88) { g.fillStyle = G.lit; g.fillRect(x + px, y, 1, 1); }
+    }
+    if (hash(tx, ty * 5) > 0.5) {                // a bubble caught in it
+      const bx = x + 3 + Math.floor(hash(tx, ty) * 9);
+      g.fillStyle = G.bubble; g.fillRect(bx, y + 2, 2, 1); g.fillRect(bx, y + 3, 1, 1);
+    }
+    for (const [open, sx] of [[!lf, x - 1], [!rt, x + TILE]]) {   // drooling over a side
+      if (!open) continue;
+      const len = 3 + Math.floor(hash(sx, ty) * 6);
+      g.fillStyle = G.body; g.fillRect(sx, y - 1, 1, len);
+      g.fillStyle = G.dark; g.fillRect(sx, y - 1 + len, 1, 1);
+    }
   }
 
   /** A sheet of ice over the rock: glassy, pale, with a glint or two in it and
@@ -775,6 +880,12 @@ export class Renderer {
     if (p.sinking) {                           // in the water it floats, swaying
       windX = Math.sin(this.flutter * 2.2) * 30 - p.look * 10;
       windY = -40;
+    } else if (p.windAy < 0) {                 // an updraft streams it straight up
+      windX = Math.sin(this.flutter * 9) * 50;
+      windY = -260;
+    } else {                                   // and a gale blows it its way
+      windX += p.windAx * 0.12;
+      windY += p.windAy * 0.08;
     }
     for (let i = 1; i < s.length; i++) {
       const n = s[i];
@@ -816,6 +927,7 @@ export class Renderer {
     ctx.drawImage(this.sky, 0, 0);
     if (this.aurora) this.#auroraSky();
     this.#parallax(ox, oy);
+    if (this.lightning) this.#lightning(realDt);
 
     ctx.drawImage(this.tiles, ox, oy, VIEW_W, VIEW_H, 0, 0, VIEW_W, VIEW_H);
 
@@ -827,6 +939,7 @@ export class Renderer {
     else if (!p.dead && !this.hideActors) {
       this.#shadow(p, ox, oy);
       this.#player(p, ox, oy);
+      if (p.onGoo) this.#gooBoots(p, ox, oy);
       this.#cue(p, ox, oy);
     }
     this.#particles(fx, ox, oy, true);
@@ -982,6 +1095,32 @@ export class Renderer {
 
   }
 
+  /** The storm: every few seconds the sky goes white for a moment, a fork of
+   *  lightning stands over the hills, and it fades. Drawn over the sky and the
+   *  ridges, under everything you play on. */
+  #lightning(realDt) {
+    const Lt = this.lightning, { ctx } = this;
+    Lt.next -= realDt;
+    if (Lt.next <= 0) {
+      Lt.flash = 1; Lt.next = 4 + Math.random() * 5;
+      Lt.x = 60 + Math.random() * (VIEW_W - 120); Lt.seed = Math.floor(Math.random() * 1000);
+    }
+    if (Lt.flash <= 0) return;
+    ctx.globalAlpha = Lt.flash * 0.35;
+    ctx.fillStyle = '#e8f0ff';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.globalAlpha = Lt.flash;
+    ctx.fillStyle = '#ffffff';
+    let bx = Lt.x;
+    for (let y = 0; y < 150; y += 3) {             // the fork, jagged on its way down
+      bx += (hash(y, Lt.seed) - 0.5) * 8;
+      ctx.fillRect(Math.round(bx), y, 1, 3);
+      if (hash(y, Lt.seed + 1) > 0.94) for (let k = 0; k < 12; k++) ctx.fillRect(Math.round(bx + k), y + k, 1, 1);
+    }
+    ctx.globalAlpha = 1;
+    Lt.flash = Math.max(0, Lt.flash - realDt * 5);
+  }
+
   /** Northern lights: curtains of green and violet swaying high in the sky. */
   #auroraSky() {
     const { ctx } = this;
@@ -1017,6 +1156,13 @@ export class Renderer {
       if (A.blink) a *= 0.35 + 0.65 * Math.max(0, Math.sin(t * 2.3 + m.t * 3));
       if (a < 0.03) continue;
       x = Math.round(x); y = Math.round(y);
+      if (A.streak) {                             // rain: a slanting streak
+        ctx.globalAlpha = 0.18 + m.p * 0.2;
+        ctx.fillStyle = m.col;
+        const len = 5 + Math.round(m.p * 6);
+        for (let k = 0; k < len; k++) ctx.fillRect(x - Math.round(k * 0.23), y - k, 1, 1);
+        continue;
+      }
       if (A.glow) {
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = a * 0.8;
@@ -1321,6 +1467,175 @@ export class Renderer {
       }
     }
 
+    // bounce pads: a framed plate with chevrons running the way it throws you,
+    // cyan for a pad that helps, red for a trap, magenta for a slam
+    const padCol = { right: ['#5ff2ff', '#1a6a80'], left: ['#ff5a5a', '#7a1c24'], down: ['#ff6ad8', '#781c66'] };
+    for (const b of L.pads) {
+      let x = Math.round(b.x - ox), y = Math.round(b.y - oy);
+      if (x < -40 || x > VIEW_W + 40 || y < -40 || y > VIEW_H + 40) continue;
+      const [lit, deep] = padCol[b.dir];
+      const kick = b.t > M.PAD_REST - 0.1 ? 2 : 0;             // recoil as it fires
+      if (b.dir === 'right') x -= kick; else if (b.dir === 'left') x += kick; else y -= kick;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.55 + (b.t > 0 ? 0.4 : 0) + Math.sin(t * 5 + b.x) * 0.1;
+      ctx.drawImage(glowSprite(lit, 16), Math.round(x + b.w / 2 - 16), Math.round(y + b.h / 2 - 16));
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = '#0c0816'; ctx.fillRect(x - 1, y - 1, b.w + 2, b.h + 2);
+      ctx.fillStyle = deep; ctx.fillRect(x, y, b.w, b.h);
+      if (b.dir !== 'down') {
+        // a side pad hangs in open air: metal caps top and bottom with a light
+        // blinking in each, so it reads as a thing hovering there, not a sign
+        // in the sky behind
+        for (const cy of [y - 3, y + b.h + 1]) {
+          ctx.fillStyle = '#0c0816'; ctx.fillRect(x - 3, cy - 1, b.w + 6, 4);
+          ctx.fillStyle = '#4a4262'; ctx.fillRect(x - 2, cy, b.w + 4, 2);
+          ctx.fillStyle = '#8a82a8'; ctx.fillRect(x - 2, cy, b.w + 4, 1);
+          ctx.fillStyle = Math.sin(t * 6 + b.x * 0.1 + cy) > 0 ? lit : deep;
+          ctx.fillRect(x + b.w / 2 - 1, cy + 1, 2, 1);
+        }
+      }
+      const shift = Math.floor(t * 18) % 6;
+      ctx.fillStyle = lit;
+      if (b.dir === 'down') {
+        for (let i = -6; i < b.w + 6; i += 6) for (let k = 0; k < 3; k++) {
+          const px = x + i + k, py = y + 1 + ((k === 1 ? 1 : 0) + shift) % 4;
+          if (px >= x && px < x + b.w && py < y + b.h) ctx.fillRect(px, py, 1, 1);
+        }
+        ctx.fillRect(x, y + b.h - 1, b.w, 1);
+      } else {
+        const d = b.dir === 'right' ? 1 : -1;
+        for (let j = -6; j < b.h + 6; j += 6) for (let k = 0; k < 3; k++) {
+          const py = y + j + k + (d > 0 ? shift : 5 - shift);
+          const px = x + 2 + (k === 1 ? d : 0) + (d > 0 ? 1 : 2);
+          if (py >= y && py < y + b.h) ctx.fillRect(px, py, 2, 1);
+        }
+        ctx.fillRect(d > 0 ? x + b.w - 1 : x, y, 1, b.h);
+      }
+    }
+
+    // goo: bubbles swelling and popping on its top
+    if (this.gooTops.length) {
+      const Gc = this.gooCol;
+      for (const [gx, gy] of this.gooTops) {
+        const x = gx * TILE - ox, y = gy * TILE - oy;
+        if (x < -TILE || x > VIEW_W || y < -TILE || y > VIEW_H + TILE) continue;
+        const ph = (t * 0.8 + hash(gx, gy)) % 1;
+        if (ph > 0.6) continue;
+        const r = ph < 0.5 ? Math.floor(ph * 6) : 3;
+        const bx = x + 3 + Math.floor(hash(gx * 3, gy) * 10), by = y - 1 - r;
+        ctx.fillStyle = ph < 0.5 ? Gc.lit : Gc.bubble;
+        if (ph < 0.5) { ctx.fillRect(bx - r, by, r * 2 + 1, 1); ctx.fillRect(bx - r, by - r, 1, r); ctx.fillRect(bx + r, by - r, 1, r); ctx.fillRect(bx - r + 1, by - r, r * 2 - 1, 1); }
+        else { ctx.fillRect(bx - 2, by - 2, 1, 1); ctx.fillRect(bx + 2, by - 3, 1, 1); ctx.fillRect(bx, by - 4, 1, 1); }
+      }
+    }
+
+    // wind: streaks blowing through it, the way it pushes. It has to read at a
+    // glance from twenty tiles off, at a run, in the rain: a tailwind is pale
+    // blue and a headwind amber (the colour of a warning), an updraft is a
+    // lit column rising off a vent in the floor, a downdraft a darker column
+    // of air falling.
+    for (const w of L.winds) {
+      const x0 = Math.round(w.x - ox), y0 = Math.round(w.y - oy);
+      if (x0 > VIEW_W || x0 + w.w < 0 || y0 > VIEW_H || y0 + w.h < 0) continue;
+      const mag = Math.hypot(w.ax, w.ay) || 1;
+      const ux = w.ax / mag, uy = w.ay / mag;
+      const column = Math.abs(uy) > 0.5;
+      // the floor under a column, where its vent is (or its downdraft lands)
+      let floor = w.y + w.h;
+      if (column) {
+        const cx = Math.floor((w.x + w.w / 2) / TILE);
+        for (let ty = Math.floor(w.y / TILE); ty < Math.ceil((w.y + w.h) / TILE); ty++) {
+          if (L.get(cx, ty) === T.SOLID) { floor = ty * TILE; break; }
+        }
+      }
+      const top = w.y, depth = floor - top;
+      if (column) {
+        // the air itself: a soft band, brightest at the floor for an updraft,
+        // shadowed for a downdraft
+        ctx.globalCompositeOperation = uy < 0 ? 'lighter' : 'source-over';
+        ctx.fillStyle = uy < 0 ? '#5fa8d8' : '#03060c';
+        for (let k = 0; k < depth; k += 4) {
+          const f = uy < 0 ? k / depth : 0.5 + 0.5 * (1 - k / depth);
+          const ry = Math.round(top + k - oy);
+          // three widths stacked, so the column has soft sides, not a box's
+          for (const [inset, share] of [[0, 0.3], [4, 0.35], [10, 0.35]]) {
+            if (w.w - inset * 2 <= 0) continue;
+            ctx.globalAlpha = (uy < 0 ? 0.16 : 0.2) * f * share;
+            ctx.fillRect(x0 + inset, ry, w.w - inset * 2, 4);
+          }
+        }
+        ctx.globalCompositeOperation = 'source-over';
+        if (uy > 0) {
+          // a downdraft's streaks would pass for more of the rain: chevrons
+          // sinking down it say which way it pulls
+          ctx.fillStyle = '#c4d2ea';
+          for (let cx = x0 + 8; cx < x0 + w.w - 4; cx += 24) {
+            for (let j = 0; j < 3; j++) {
+              const f = ((t * 50 + j * depth / 3 + (cx - x0) * 0.7) % depth) / depth;
+              const cy = Math.round(top + f * depth - oy);
+              if (L.get(Math.floor((cx + ox) / TILE), Math.floor((cy + oy) / TILE)) === T.SOLID) continue;
+              ctx.globalAlpha = 0.4 * Math.sin(f * Math.PI);
+              for (let k = 0; k < 4; k++) { ctx.fillRect(cx - k, cy - k, 1, 1); ctx.fillRect(cx + k, cy - k, 1, 1); }
+            }
+          }
+          ctx.globalAlpha = 1;
+        }
+        if (uy < 0) {
+          // the vent: a grate across the floor with a breath of light over it
+          const fy = Math.round(floor - oy);
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = '#1a222e'; ctx.fillRect(x0 + 1, fy, w.w - 2, 2);
+          ctx.fillStyle = '#8fd0ff';
+          for (let gx = 3; gx < w.w - 2; gx += 4) ctx.fillRect(x0 + gx, fy, 2, 1);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 0.35 + 0.15 * Math.sin(t * 9);
+          ctx.drawImage(glowSprite('#8fd0ff', 18), x0 + w.w / 2 - 18, fy - 14);
+          ctx.globalCompositeOperation = 'source-over';
+        }
+      }
+      const n = Math.min(90, Math.round((w.w * (column ? depth : w.h)) / (column ? 260 : 520)));
+      const col = column ? (uy < 0 ? '#d8f2ff' : '#8a9cb8') : (ux > 0 ? '#bfe6ff' : '#ffc890');
+      const span = column ? depth : w.w;
+      for (let i = 0; i < n; i++) {
+        const sp = (column ? 200 : 260) + hash(i, 7) * 200;
+        const along = ((hash(i, 3) * 1000 + t * sp) % span) / span;
+        const fwd = (ux > 0 || uy > 0) ? along : 1 - along;
+        const sway = column ? Math.sin(t * 3 + i) * 2 : Math.sin(t * 2 + i * 1.7) * 1.5;
+        const px = column ? w.x + 1 + hash(i, 1) * (w.w - 2) + sway : w.x + fwd * w.w;
+        const py = column ? top + fwd * depth : w.y + hash(i, 2) * w.h + sway;
+        // (wind blows through the air, not the rock its box runs into)
+        if (L.get(Math.floor(px / TILE), Math.floor(py / TILE)) === T.SOLID) continue;
+        // fade in and out along the way, so no streak pops at the box's edge
+        const a = Math.sin(along * Math.PI);
+        const len = (column ? 8 : 12) + Math.floor(hash(i, 5) * (column ? 10 : 18));
+        ctx.fillStyle = col;
+        // (an updraft's streaks go on additively, two pixels wide, with a bright
+        //  head: the rain falls in thin vertical streaks too, and these must
+        //  not read as more of it)
+        const up = column && uy < 0;
+        if (up) ctx.globalCompositeOperation = 'lighter';
+        for (let k = 0; k < len; k++) {
+          ctx.globalAlpha = a * (up ? 0.7 : column ? 0.5 : 0.75) * (1 - 0.75 * k / len);
+          ctx.fillRect(Math.round(px - ux * k - ox), Math.round(py - uy * k - oy), up && k < len / 2 ? 2 : 1, 1);
+        }
+        if (up) {
+          ctx.globalAlpha = a;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(Math.round(px - ox), Math.round(py - oy), 2, 2);
+          ctx.globalCompositeOperation = 'source-over';
+        }
+        // and now and then a scrap carried in it, tumbling
+        if (!column && i % 7 === 0) {
+          ctx.globalAlpha = a * 0.9;
+          ctx.fillStyle = '#7f9a62';
+          const flip = Math.floor(t * 10 + i) % 2;
+          ctx.fillRect(Math.round(px - ox) + 3, Math.round(py - oy) - 2, flip ? 2 : 1, flip ? 1 : 2);
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
     for (const b of L.boosts) {
       const x = Math.round(b.x - ox), y = Math.round(b.y - oy);
       if (x > VIEW_W + 10 || x + b.w < -10 || y < -10 || y > VIEW_H + 10) continue;
@@ -1459,6 +1774,21 @@ export class Renderer {
   /** In the water: what is above the surface is drawn as it is, and what is
    *  below it shows faintly through the water, so you watch yourself wade and
    *  sink instead of standing in front of it. */
+  /** In goo the boots go under: a lip of it drawn over your feet, heaped
+   *  where you push through and wobbling, so it reads as held, not standing. */
+  #gooBoots(p, ox, oy) {
+    const { ctx } = this, G = this.gooCol;
+    const fy = Math.round(p.footY - oy), x0 = Math.round(p.x - ox) - 3, w = p.w + 6;
+    const lead = Math.sign(p.vx);
+    for (let i = 0; i < w; i++) {
+      // a bow wave heaped on the leading side, and a wobble that runs along it
+      const heap = lead ? Math.max(0, (lead > 0 ? i / w : 1 - i / w) - 0.5) * 5 : 0;
+      const h = 2 + Math.round(heap + Math.sin(this.time * 14 + i * 0.9) * 0.6);
+      ctx.fillStyle = G.body; ctx.fillRect(x0 + i, fy - h, 1, h);
+      ctx.fillStyle = G.lit; ctx.fillRect(x0 + i, fy - h, 1, 1);
+    }
+  }
+
   #sinking(p, ox, oy) {
     const { ctx } = this;
     const sy = Math.round(p.sinkSurface + 2 - oy);   // where the drawn body of water starts

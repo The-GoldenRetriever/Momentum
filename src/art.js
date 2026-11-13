@@ -655,6 +655,26 @@ const ROLL_STAGES = [
   )),
 ];
 
+// A dive: head first and down, arms reaching out past the head, boots
+// trailing up behind.
+const DIVE_POSE = sheet(rows(
+  '.kk.............',
+  'knnk............',
+  '.kppk...........',
+  '..kppk..........',
+  '...kppkk........',
+  '....kbbbk.......',
+  '....kcccck......',
+  '.....kcLcck.kkk.',
+  '......kccckkhhhk',
+  '.......krrkhHGgk',
+  '........kckhhsek',
+  '.........kcksssk',
+  '..........kckkk.',
+  '...........ksk..',
+  '............k...',
+));
+
 // both arms up past the head, reaching for air
 const STRUGGLE_UP = over(body('stand', { arms: 'none', head: 'up' }), rows(
   '.ksk........ksk.',
@@ -759,6 +779,7 @@ export const FRAMES = {
     body('tuck', { arms: 'brace', head: 'down' }),
   ],
   slide: [SLIDE_POSE],
+  dive: [DIVE_POSE],
   crouch: CROUCH,
   crouchwalk: CROUCH_WALK,
   vault: VAULT_UP,

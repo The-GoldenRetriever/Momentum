@@ -128,6 +128,43 @@ function course(L) {
   flag(x + 3, y);
   x += 10;
 
+  // ================================================================ dive
+  // Run off the ledge, dive (DOWN in the air: head first, and low) through
+  // the window in the wall across the drop, roll as you land in the tunnel
+  // behind it, and slide on out of it fast enough to clear the pit beyond.
+  // The window's mouth is tall, but the tunnel past it is a slide's height:
+  // come in upright and you meet its lip and stop, and from a crawl the pit
+  // is too wide. (The mouth takes a dive off the ledge at anything from about
+  // 280 px/s, a run up from the flag, to a burst's 560.)
+  rock(x, x + 22, y);
+  L.sign(x + 3, y - 1, 'DIVE', [
+    'DOWN in the air, at a run, is a DIVE: head first, and as',
+    'low as a slide. Run off the ledge and dive through the',
+    'window. You land in a roll; keep DOWN held and it turns',
+    'into a slide. Come out fast: the pit after is wide.',
+  ]);
+  x += 22;
+  m.sections.dive = x;
+  {
+    const W = 12;                               // the wall: mouth, then tunnel
+    L.rect(x, y, 4, H - y, T.EMPTY);            // the drop, spiked far below
+    pit(x, 4, y + 3);
+    rock(x + 4, x + 4 + W, y - 10);             // the wall ...
+    // ... its mouth, four tall from the ledge's own height and four deep:
+    // room for a dive to come down in and roll, but at speed no time to get
+    // low once you are down unless you already are
+    L.rect(x + 4, y, 4, 4, T.EMPTY);
+    L.rect(x + 8, y + 3, W - 4, 1, T.LOWCEIL);  // ... and the tunnel, a slide high
+    m.zones.push({ at: [x - 3, x + 4 + W], dive: true, edge: x });   // (the bot: no jump off it, DOWN from the edge on)
+    x += 4 + W;
+    y += 4;
+    pit(x, 10, y);                              // too wide from a crawl
+    x += 10;
+  }
+  rock(x, x + 10, y);
+  flag(x + 3, y);
+  x += 10;
+
   // =========================================================== wall jump
   // the test area's shaft: a doorway at the bottom on the left, sealed above,
   // the way out along the top of the right wall

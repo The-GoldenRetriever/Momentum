@@ -17,6 +17,9 @@ import { buildTidewater } from '../src/levels/tidewater.js';
 import { buildStillness } from '../src/levels/stillness.js';
 import { buildGlacier } from '../src/levels/glacier.js';
 import { buildTutorial } from '../src/levels/tutorial.js';
+import { buildRicochet } from '../src/levels/ricochet.js';
+import { buildMire } from '../src/levels/mire.js';
+import { buildGale } from '../src/levels/gale.js';
 
 // A course that marks itself (L.marks: its flags, the edges its fang hops
 // leave from, and where each run-up ends) gets its route worked out from
@@ -85,4 +88,7 @@ export const ROUTES = {
   updraft: marked(buildUpdraft),
   furnace: marked(buildFurnace),
   glacier: marked(buildGlacier),
+  ricochet: { ...marked(buildRicochet), topGear: [] },
+  mire: { ...marked(buildMire), topGear: [] },
+  gale: { ...marked(buildGale), topGear: [] },
 };

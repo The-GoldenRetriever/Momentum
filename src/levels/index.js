@@ -12,6 +12,9 @@ import { buildFurnace } from './furnace.js';
 import { buildTidewater } from './tidewater.js';
 import { buildStillness } from './stillness.js';
 import { buildGlacier } from './glacier.js';
+import { buildRicochet } from './ricochet.js';
+import { buildMire } from './mire.js';
+import { buildGale } from './gale.js';
 
 // `id` keys the saved best time, so it never changes once a level ships
 // (the test area kept the key it had before there was more than one level).
@@ -22,7 +25,7 @@ import { buildGlacier } from './glacier.js';
 // (tools/route.js prints it: `jsc -m tools/route.js -- <level> <spawn x> <y>`.)
 
 export const LEVELS = [
-  { id: 'tutorial', name: 'first steps', build: buildTutorial, difficulty: 1, par: 37.4,
+  { id: 'tutorial', name: 'first steps', build: buildTutorial, difficulty: 1, par: 39.6,
     blurb: ['Every move, one at a time: each gate can only', 'be passed with the move it teaches.'] },
   // (the test area kept its id when it became a regular level, and its file
   // name: the sim checks still build it as their playground)
@@ -46,6 +49,12 @@ export const LEVELS = [
     blurb: ['Under a low roof that keeps changing, with the', 'stillness chasing you the whole way.'] },
   { id: 'glacier', name: 'glacier', build: buildGlacier, difficulty: 10, par: 30.9, needs: { gold: 2 },
     blurb: ['All of it ice: it will not let you stop. A lake', 'that holds you at a full bar\'s speed, and an icefall.'] },
+  { id: 'ricochet', name: 'ricochet', build: buildRicochet, difficulty: 11, par: 17.8, needs: { gold: 3 },
+    blurb: ['Pads that fire you across gaps no jump crosses,', 'red ones that throw you back, a pinball run.'] },
+  { id: 'mire', name: 'the mire', build: buildMire, difficulty: 12, par: 23.5, needs: { gold: 4 },
+    blurb: ['Goo that holds you: one touch and you crawl.', 'Jump every strip of it. Dash it under the roof.'] },
+  { id: 'gale', name: 'gale', build: buildGale, difficulty: 13, par: 23.1, needs: { gold: 5 },
+    blurb: ['Wind that carries you, wind that holds you back,', 'updrafts up the cliffs, downdrafts in the pits.'] },
 ];
 
 // Medal times, from a level's par and its difficulty (1 to 10): a share of
@@ -58,8 +67,8 @@ export const LEVELS = [
 // par, gold under even the expert's time; they were asked to come down.)
 //   [name, share of par at difficulty 1, colour, less per level of difficulty]
 export const MEDALS = [
-  ['gold', 1.00, '#ffd34d', 0.005],
-  ['silver', 1.12, '#d6dde8', 0.012],
+  ['gold', 1.00, '#ffd34d', 0.002],
+  ['silver', 1.12, '#d6dde8', 0.010],
   ['bronze', 1.30, '#d08a52', 0.02],
 ];
 

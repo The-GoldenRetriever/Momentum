@@ -1005,7 +1005,7 @@ function feetFirst() {
       if (z.vault || z.steady) continue;
       const from = [...starts].reverse().find((f) => f.x < z.at[0]);
       const r = flatOut(build, from, 0, { ...route, zones: zones.filter((_, j) => !move.includes(j)) });
-      const what = z.hop ? 'hop' : z.jump ? 'jump' : z.slide ? 'slide' : z.roll ? 'slope roll' : z.autoburst ? 'V (burst off)' : move.length > 1 ? 'dashes' : 'dash';
+      const what = z.hop ? 'hop' : z.jump ? 'jump' : z.slide ? 'slide' : z.roll ? 'slope roll' : z.dive ? 'dive' : z.autoburst ? 'V (burst off)' : move.length > 1 ? 'dashes' : 'dash';
       check(`${name}: the ${what} at tile ${z.at[0]} ${move.length > 1 ? 'are' : 'is'} needed`,
         !r.reached, `without: ${r.reached ? 'still made it' : `stopped at tile ${r.at}`}`);
       // a crystal chain marked `exact` needs every link: one dash short fails
@@ -1408,34 +1408,47 @@ function feetFirst() {
   check('and with no medals, every gate is shut', none.length === 0, none.map((l) => l.id).join(', ') || 'all shut');
 }
 
-// 42. no dash fills the bar, plain or slide (a dash out of a slide: a
-//     wavedash), and the extra speed a slide-dash hands you, slid on, bleeds
-//     away faster than a slide's own friction would take it
+// 42. a slide-dash (a dash from the ground aimed down and forward, as out of
+//     a slide) is a dash like any other but low, along the floor, and it
+//     hands off faster; its slide, held, bleeds that extra faster than a
+//     slide's own friction; and the bar does not fill until you stand up
 {
   const flat = () => new Level(400, 30).rect(0, 20, 400, 10);
+  const D = Math.ceil(P.DASH_TIME * 120);
   const dashFrom = (slide, holdDown) => {
     const sim = makeSim({ x: 10, y: 19 }, flat());
     sim.run(80, ['right']);
     sim.p.flow = 0.6;
-    let bar = 0, waved = false, at = null;
+    let bar = 0, waved = false, at = null, handoff = null, low = true, v1 = 0, v2 = 0, barSliding = 0, barStood = 0;
     sim.run(200, (i) => {
       if (!slide) return i === 6 ? ['right', 'dash'] : ['right'];
       return i < 6 ? ['right', 'down'] : i === 6 ? ['right', 'down', 'dash'] : holdDown ? ['right', 'down'] : ['right'];
-    }, (i, p) => { if (i === 36) bar = p.flow; if (p.waveRun) waved = true; if (i === 126) at = Math.abs(p.vx); });
-    return { bar, waved, at };
+    }, (i, p) => {
+      if (i === 36) bar = p.flow;
+      if (p.waveRun) waved = true;
+      if (i > 6 && i < 5 + D && slide && p.h !== P.SLIDE_H) low = false;   // (through it: on its last step it may stand)
+      if (i === 8 + D) handoff = Math.abs(p.vx);
+      if (i === 20 + D) { v1 = Math.abs(p.vx); barSliding = p.flow; }
+      if (i === 80 + D) { v2 = Math.abs(p.vx); }
+      if (i === 126) { at = Math.abs(p.vx); barStood = p.flow; }
+    });
+    return { bar, waved, at, handoff, low, rate: (v1 - v2) / (60 / 120), barSliding, barStood, p: sim.p };
   };
   const plain = dashFrom(false), wave = dashFrom(true, false), slid = dashFrom(true, true);
+  check('a slide-dash is a dash, kept low along the floor', wave.waved && wave.low, `low through it: ${wave.low}`);
+  check('and hands off faster than a dash does', wave.handoff > plain.handoff + 50,
+    `${wave.handoff.toFixed(0)} px/s out of a slide-dash, ${plain.handoff.toFixed(0)} out of a dash`);
   // (a run alone over the same 30 steps, for what the bar does without one)
   const ran = (() => { const sim = makeSim({ x: 10, y: 19 }, flat()); sim.run(80, ['right']); sim.p.flow = 0.6; sim.run(37, ['right']); return sim.p.flow; })();
-  check('a dash, plain or slide, fills the bar no more than running does', wave.waved && plain.bar <= ran && wave.bar <= ran,
+  check('a dash, plain or slide, fills the bar no more than running does', plain.bar <= ran && wave.bar <= ran,
     `bar ${wave.bar.toFixed(3)} after a slide-dash, ${plain.bar.toFixed(3)} after a dash, ${ran.toFixed(3)} running`);
-  // slid on for a second from WAVEDASH_X: a slide's own friction (held forward)
-  // takes 60 of it; the bleed takes WAVEDASH_BLEED more
-  const slideOnly = P.WAVEDASH_X - P.SLIDE_FRICTION * 0.4;
-  check('and its speed, slid on, lasts less than a slide alone would keep it', slid.at < slideOnly - P.WAVEDASH_BLEED * 0.8,
-    `${slid.at.toFixed(0)} px/s a second on, against ${slideOnly} on friction alone`);
-  // like a dash, it pays back the run you would have made: stood up out of
-  // it, a second on you are no slower than after a plain dash
+  check('the bar does not fill while the slide-dash\'s slide goes on', slid.barStood <= slid.barSliding + 1e-6 && slid.p.sliding,
+    `bar ${slid.barSliding.toFixed(3)} -> ${slid.barStood.toFixed(3)}, still sliding: ${slid.p.sliding}`);
+  check('and fills again once you stand', wave.barStood > wave.bar + 0.1, `${wave.bar.toFixed(3)} -> ${wave.barStood.toFixed(3)} stood up`);
+  // held, the slide after it loses its speed at friction (60, holding
+  // forward) plus WAVEDASH_BLEED, for as long as it is over top speed
+  check('slid on, its extra bleeds faster than a slide\'s own friction', slid.rate > P.SLIDE_FRICTION * 0.4 + P.WAVEDASH_BLEED * 0.8,
+    `${slid.rate.toFixed(0)} px/s lost per second, a slide alone ${P.SLIDE_FRICTION * 0.4}`);
   check('and stood up out of, it leaves you no slower than a plain dash does', wave.at >= plain.at - 2,
     `${wave.at.toFixed(0)} px/s a second on, against ${plain.at.toFixed(0)} after a dash`);
 }
@@ -1479,6 +1492,86 @@ function feetFirst() {
   check('coming out of a burst you stay slow for a second', endedAt !== null && Math.abs(slowFor - tail) <= 1,
     `${slowFor} steps slowed after it ended (${tail} wanted)`);
   check('and then the world is back up to speed', after === 1, `x${after}`);
+}
+
+// 45. a slide in the air is a dive: it lands in a roll, which costs nothing,
+//     and with down still held the roll runs on into a slide
+{
+  const diveOff = (hold) => {
+    const sim = makeSim({ x: 10, y: 19 }, new Level(400, 30).rect(0, 20, 400, 10));
+    sim.run(60, ['right']);
+    const seq = [];
+    let last = '', vLand = 0, vRoll = 0;
+    sim.run(120, (i) => (i < 20 ? ['right', 'jump'] : i < 40 ? ['right'] : (hold || !sim.p.grounded) ? ['right', 'down'] : ['right']),
+      (i, p) => {
+        const a = p.sliding ? 'slide' : p.anim.name;
+        if (a !== last) { seq.push(a); last = a; if (a === 'roll') vLand = Math.abs(p.vx); }
+        if (a === 'roll') vRoll = Math.abs(p.vx);
+      });
+    return { seq, vLand, vRoll };
+  };
+  const off = diveOff(false), on = diveOff(true);
+  const order = (seq, ...names) => { let k = 0; for (const s of seq) if (s === names[k]) k++; return k === names.length; };
+  check('down in the air at speed dives, and the dive lands in a roll', order(off.seq, 'dive', 'roll') && !off.seq.includes('slide'),
+    off.seq.join(' > '));
+  check('held down through the roll, it runs on into a slide', order(on.seq, 'dive', 'roll', 'slide'), on.seq.join(' > '));
+  check('and the roll costs nothing', off.vRoll >= off.vLand - 1, `${off.vLand.toFixed(0)} -> ${off.vRoll.toFixed(0)} px/s`);
+}
+
+// 46. the new furniture does what it says. A side pad fires you on past top
+//     gear and a red one throws you back; a down pad slams you to the floor;
+//     goo drags you to a crawl, weakens your jump and drains the bar; a
+//     headwind holds your top speed down, a tailwind lifts it, an updraft
+//     carries you up a face you could never jump
+{
+  const flat = () => new Level(400, 40).rect(0, 30, 400, 10);
+  const padHit = (dir) => {
+    const L = flat(); L.pad(30, dir === 'down' ? 26 : 28, dir);
+    const sim = makeSim({ x: 20, y: 29 }, L);
+    sim.p.flow = 1;
+    let vx = 0, vy = 0;
+    sim.run(160, (i) => (dir === 'down' ? (i > 50 && i < 70 ? ['right', 'jump'] : ['right']) : ['right']),
+      (i, p) => { if (Math.abs(p.vx) > Math.abs(vx)) vx = p.vx; if (p.vy > vy) vy = p.vy; });
+    return { vx, vy };
+  };
+  const r = padHit('right'), l = padHit('left'), d = padHit('down');
+  check('a cyan pad fires you on past top gear', r.vx >= M.PAD_SIDE - 1, `${r.vx.toFixed(0)} px/s`);
+  check('a red pad throws you back the way you came', l.vx <= -M.PAD_SIDE + 1, `${l.vx.toFixed(0)} px/s`);
+  check('a pink pad slams you down', d.vy >= M.PAD_DOWN - 1, `${d.vy.toFixed(0)} px/s down`);
+
+  const L = flat(); L.goo(40, 30, 60);
+  const sim = makeSim({ x: 10, y: 29 }, L);
+  sim.p.flow = 1.4;
+  let crawl = 0, bar0 = null, jumpV = 0;
+  sim.run(400, (i) => (i === 300 ? ['right', 'jump'] : ['right']), (i, p) => {
+    if (p.onGoo && bar0 === null) bar0 = p.flow;
+    if (p.onGoo && i > 200 && i < 300) crawl = Math.max(crawl, Math.abs(p.vx));
+    if (i > 300 && p.vy < jumpV) jumpV = p.vy;
+  });
+  check('goo drags you to a crawl', crawl > 0 && crawl <= P.GOO_MAX + 1, `${crawl.toFixed(0)} px/s (GOO_MAX ${P.GOO_MAX})`);
+  check('and drains the bar', bar0 !== null && sim.p.flow < bar0 - 0.5, `${bar0?.toFixed(2)} -> ${sim.p.flow.toFixed(2)}`);
+  check('and a jump out of it comes out weak', -jumpV < P.JUMP_V * 0.75, `${(-jumpV).toFixed(0)} px/s up (JUMP_V ${P.JUMP_V})`);
+
+  const windRun = (ax) => {
+    const L = flat(); if (ax) L.wind(0, 20, 400, 12, ax);
+    const sim = makeSim({ x: 10, y: 29 }, L);
+    sim.p.flow = 1;
+    sim.run(480, ['right']);
+    return Math.abs(sim.p.vx);
+  };
+  const still = windRun(0), head = windRun(-700), tail = windRun(900);
+  check('a headwind holds your speed down, a tailwind carries you past it', head < still - 120 && tail > still + 150,
+    `${head.toFixed(0)} / ${still.toFixed(0)} / ${tail.toFixed(0)} px/s`);
+
+  const U = flat().rect(30, 18, 370, 12); U.wind(26, 12, 4, 18, 0, -2600);
+  const up = makeSim({ x: 20, y: 29 }, U);
+  up.run(360, ['right']);
+  check('an updraft carries you up a face no jump reaches', up.p.cx / TILE > 32 && up.p.footY / TILE <= 18.01,
+    `at tile ${(up.p.cx / TILE).toFixed(1)}, row ${(up.p.footY / TILE).toFixed(1)}`);
+  const N = flat().rect(30, 18, 370, 12);
+  const no = makeSim({ x: 20, y: 29 }, N);
+  no.run(360, (i) => (i % 60 < 20 ? ['right', 'jump'] : ['right']));
+  check('(which no jump does)', no.p.cx / TILE < 30, `at tile ${(no.p.cx / TILE).toFixed(1)}`);
 }
 
 print(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURE(S)`);
