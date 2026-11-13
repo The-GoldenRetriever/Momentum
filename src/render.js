@@ -1,7 +1,7 @@
 // render.js — everything that puts pixels on the screen.
 
 import { TILE, T, isSlope } from './level.js';
-import { makeCanvas, sprites, ghosts, SPRITE_W, SPRITE_H } from './art.js';
+import { makeCanvas, sprites, ghosts, ghostsSoft, SPRITE_W, SPRITE_H } from './art.js';
 import { drawText, textWidth } from './font.js';
 import { phaseState, M } from './mechanics.js';
 import { keyName } from './input.js';
@@ -288,13 +288,13 @@ function glowSprite(col, r) {
 // What drifts through the air of each theme (see Renderer.#ambient): how many,
 // which way, how fast, their colours, and whether they glow.
 const AMBIENT = {
-  fireflies: { n: 26, cols: ['#d8ff8a', '#fff2a0'], glow: true, drift: [8, -2], wander: 14, blink: true, low: true },
-  spores: { n: 40, cols: ['#8ff2e0', '#c8fff0'], glow: true, drift: [3, -9], wander: 6 },
-  dust: { n: 46, cols: ['#ffd8a8', '#ffc490'], drift: [-10, 2], wander: 5, faint: true },
-  motes: { n: 36, cols: ['#fff4dc', '#dce8ff'], glow: true, drift: [-6, -3], wander: 6, faint: true },
-  snow: { n: 90, cols: ['#ffffff', '#e6f2ff'], drift: [-8, 22], wander: 9 },
-  mist: { n: 40, cols: ['#ffffff', '#dde8f0'], drift: [-14, -2], wander: 4, faint: true },
-  embers: { n: 60, cols: ['#ff9a3c', '#ffd070', '#ff6a2a'], glow: true, drift: [4, -30], wander: 10, blink: true },
+  fireflies: { n: 16, cols: ['#d8ff8a', '#fff2a0'], glow: true, drift: [8, -2], wander: 14, blink: true, low: true },
+  spores: { n: 24, cols: ['#8ff2e0', '#c8fff0'], glow: true, drift: [3, -9], wander: 6 },
+  dust: { n: 26, cols: ['#ffd8a8', '#ffc490'], drift: [-10, 2], wander: 5, faint: true },
+  motes: { n: 20, cols: ['#fff4dc', '#dce8ff'], glow: true, drift: [-6, -3], wander: 6, faint: true },
+  snow: { n: 55, cols: ['#ffffff', '#e6f2ff'], drift: [-8, 22], wander: 9 },
+  mist: { n: 24, cols: ['#ffffff', '#dde8f0'], drift: [-14, -2], wander: 4, faint: true },
+  embers: { n: 36, cols: ['#ff9a3c', '#ffd070', '#ff6a2a'], glow: true, drift: [4, -30], wander: 10, blink: true },
 };
 
 export class Renderer {
@@ -501,17 +501,17 @@ export class Renderer {
         const lx = sx - start, sw = (k + 1) * cw + jit(k + 1) - start;
         const n = hash(wx * 3 + 7, wy * 5 + 1);
         let col;
-        if (ry === 0 || lx === 0) col = seams && hash(wx >> 1, wy >> 1) > 0.82 ? P.vein : d >= 1 ? P.dark2 : P.dark;
-        else if ((ry === 1 && lx === 1) || (ry === last && lx === sw - 1)) col = P.dark2;
-        else if (ry === 1) col = d >= 2 ? P.mid2 : P.lit;
-        else if (lx === 1) col = d >= 2 ? P.mid : P.mid2;
-        else if (ry === last || lx === sw - 1) col = P.midDim;
-        else if (n > 0.975) col = d >= 2 ? P.mid2 : P.lit;
-        else if (n < 0.025) col = P.dark2;
-        else if (n > 0.966) col = P.vein;
+        // (kept quiet on purpose: soft mortar, a lit edge only near the
+        // surface, few flecks; the stones are a texture, not a feature)
+        if (ry === 0 || lx === 0) col = seams && hash(wx >> 1, wy >> 1) > 0.82 ? P.vein : d >= 1 ? P.midDim : P.dark2;
+        else if (ry === 1) col = d === 0 ? P.mid2 : P.mid;
+        else if ((ry === last || lx === sw - 1) && d === 0) col = P.midDim;
+        else if (n > 0.992) col = d === 0 ? P.lit : P.mid2;
+        else if (n < 0.008) col = P.dark2;
+        else if (n > 0.988) col = P.vein;
         else {
           const tint = hash(k, row);
-          col = tint > 0.72 ? P.mid2 : tint < 0.3 ? P.midDim : P.mid;
+          col = tint > 0.85 && d === 0 ? P.mid2 : tint < 0.15 ? P.midDim : P.mid;
         }
         buf[wy * W + wx] = col;
       }
@@ -530,7 +530,7 @@ export class Renderer {
     const depth = this.#depthAt(L, tx, ty);
 
     // a crack running through some of the buried blocks
-    if (depth > 0 && hash(tx, ty * 3) > 0.93) {
+    if (depth > 0 && hash(tx, ty * 3) > 0.96) {
       const band = TH.bands[Math.min(TH.bands.length - 1, depth)];
       g.fillStyle = band.dark;
       let cx = x + 2 + Math.floor(hash(tx, ty) * (TILE - 5));
@@ -554,7 +554,7 @@ export class Renderer {
         g.fillStyle = TH.mossShade;
         g.fillRect(x + px, y + 5 + hang, 1, 1);
         if (hash(tx * 31 + px, ty * 7) > 0.8) { g.fillStyle = TH.moss; g.fillRect(x + px, y - 1, 1, 1); }
-        if (hash(tx * 13 + px, ty * 3) > 0.9) { g.fillStyle = TH.mossLit; g.fillRect(x + px, y + 1, 1, 1); }
+        
       }
       // grass spilling over an open side, and the odd flower
       for (const [open, sx] of [[!lf, x - 1], [!rt, x + TILE]]) {
@@ -564,7 +564,7 @@ export class Renderer {
         g.fillStyle = TH.mossDark; g.fillRect(sx, y + len, 1, 1);
       }
       const fl = TH.flowers;
-      if (fl && hash(tx * 7, ty * 11) > 0.72) {
+      if (fl && hash(tx * 7, ty * 11) > 0.86) {
         const fx = x + 2 + Math.floor(hash(tx, ty * 5) * 12);
         g.fillStyle = TH.mossDark; g.fillRect(fx, y - 2, 1, 2);
         g.fillStyle = fl[Math.floor(hash(tx * 3, ty) * fl.length)];
@@ -727,7 +727,7 @@ export class Renderer {
         }
 
         // the odd glowing crystal buried in deep rock
-        if (t === T.SOLID && this.#depthAt(L, tx, ty) >= 2 && hash(tx * 3, ty * 5) > 0.988) {
+        if (t === T.SOLID && this.#depthAt(L, tx, ty) >= 2 && hash(tx * 3, ty * 5) > 0.995) {
           const px = x + 5 + Math.floor(hash(tx, ty) * 5), py = y + 5 + Math.floor(hash(ty, tx) * 5);
           g.fillStyle = 'rgba(111,232,255,0.25)';
           g.fillRect(px - 2, py - 2, 5, 5);
@@ -751,32 +751,44 @@ export class Renderer {
     this.sqGround = p.grounded;
     this.sqVy = p.vy;
     this.sq = (this.sq ?? 0) * (1 - Math.min(1, dt * 12));
+    // turning round: squeezed thin for a moment, as the body swings through
+    if (this.sqFacing !== undefined && p.look !== this.sqFacing) this.turn = 1;
+    this.sqFacing = p.look;
+    this.turn = (this.turn ?? 0) * (1 - Math.min(1, dt * 18));
   }
 
   updateScarf(p, dt) {
     this.#squashStep(p, dt);
-    const anchorX = p.cx - p.facing * 2;
+    const anchorX = p.cx - p.look * 2;
     const anchorY = p.y + (p.sliding ? 3 : 6);
     if (!this.scarf) {
-      this.scarf = Array.from({ length: 8 }, () => ({ x: anchorX, y: anchorY, px: anchorX, py: anchorY }));
+      this.scarf = Array.from({ length: 10 }, () => ({ x: anchorX, y: anchorY, px: anchorX, py: anchorY }));
     }
     const s = this.scarf;
     s[0].x = anchorX; s[0].y = anchorY;
-    const windX = -p.vx * 0.6 - p.facing * 26;
-    const windY = -p.vy * 0.3 + 70;
+    // the wind of your own running, and a flutter that grows with speed (each
+    // link a little out of step with the last, so it ripples down the length)
+    const sp = Math.min(1, Math.abs(p.vx) / 420);
+    this.flutter = (this.flutter ?? 0) + dt;
+    let windX = -p.vx * 0.6 - p.look * 26;
+    let windY = -p.vy * 0.3 + 70 - sp * 30;
+    if (p.sinking) {                           // in the water it floats, swaying
+      windX = Math.sin(this.flutter * 2.2) * 30 - p.look * 10;
+      windY = -40;
+    }
     for (let i = 1; i < s.length; i++) {
       const n = s[i];
       const vx = (n.x - n.px) * 0.8, vy = (n.y - n.py) * 0.8;
       n.px = n.x; n.py = n.y;
       n.x += vx + windX * dt;
-      n.y += vy + windY * dt;
+      n.y += vy + (windY + Math.sin(this.flutter * 22 - i * 0.9) * 60 * sp * (i / s.length)) * dt;
     }
     for (let k = 0; k < 3; k++) {
       for (let i = 1; i < s.length; i++) {
         const a = s[i - 1], b = s[i];
         const dx = b.x - a.x, dy = b.y - a.y;
         const d = Math.hypot(dx, dy) || 0.001;
-        const seg = 2.4;
+        const seg = 2.1 + sp * 0.9;              // it streams out longer at speed
         const f = (d - seg) / d;
         b.x -= dx * f; b.y -= dy * f;
       }
@@ -811,6 +823,7 @@ export class Renderer {
     this.#ambient(ox, oy);
     this.#particles(fx, ox, oy, false);
     if (p.sinking && !this.hideActors) this.#sinking(p, ox, oy);
+    else if (p.dead && p.deathCause === 'water' && !this.hideActors) this.#drowned(p, ox, oy);
     else if (!p.dead && !this.hideActors) {
       this.#shadow(p, ox, oy);
       this.#player(p, ox, oy);
@@ -1386,10 +1399,12 @@ export class Renderer {
 
   #player(p, ox, oy, alpha = 1) {
     const { ctx } = this;
-    const dir = p.facing > 0 ? 0 : 1;
+    const dir = p.look > 0 ? 0 : 1;
 
+    // afterimages: cyan off a dash or a burst, a softer violet off a sprint
+    const ghostSet = p.bursting || p.dashing ? ghosts : ghostsSoft;
     for (const g of p.trail) {
-      const set = ghosts[g.name] ?? ghosts.idle;
+      const set = ghostSet[g.name] ?? ghostSet.idle;
       const img = set[g.facing > 0 ? 0 : 1][Math.min(g.frame, set[0].length - 1)];
       ctx.globalAlpha = Math.max(0, g.life / (g.max ?? 0.22)) * (g.alpha ?? 0.45);
       ctx.drawImage(img, Math.round(g.x + (p.w - SPRITE_W) / 2 - ox), Math.round(g.y + g.h - SPRITE_H - oy));
@@ -1427,6 +1442,7 @@ export class Renderer {
     let sx = 1, sy = 1;
     if (p.dashing) { const d = p.dashDir; sx = 1 + Math.abs(d.x) * 0.22; sy = 1 + Math.abs(d.y) * 0.22 - Math.abs(d.x) * 0.12; }
     else if (!p.vault && !p.sliding && !(p.rolling > 0) && Math.abs(this.sq ?? 0) > 0.02) { sy = 1 + this.sq; sx = 1 - this.sq * 0.8; }
+    if ((this.turn ?? 0) > 0.05 && !p.dashing) sx *= 1 - this.turn * 0.35;
     if (sx === 1 && sy === 1) ctx.drawImage(img, px, py);
     else {
       const dw = Math.round(SPRITE_W * sx), dh = Math.round(SPRITE_H * sy);
@@ -1457,18 +1473,48 @@ export class Renderer {
     ctx.restore();
   }
 
+  /** The scarf: a ribbon, not a string of beads. Each link is stroked from the
+   *  one before it, tapering from three pixels to one, banded in two reds
+   *  with a lit upper edge, and the tail splits in two. Grey while the dash is
+   *  spent (or not yours yet), red while you have one. */
+  /** Gone under: the last of the figure, one hand still up, sinking away
+   *  through the water and fading, while the bubbles come up past it. */
+  #drowned(p, ox, oy) {
+    const { ctx } = this;
+    const k = clamp01(1 - p.deadTimer / 0.45);
+    const img = (sprites.drown ?? sprites.idle)[p.look > 0 ? 0 : 1][0];
+    const sy = Math.round(p.sinkSurface + 2 - oy);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, sy, VIEW_W, VIEW_H - sy); ctx.clip();
+    ctx.globalAlpha = 0.32 * (1 - k);
+    ctx.drawImage(img, Math.round(p.x + (p.w - SPRITE_W) / 2 - ox), Math.round(p.y + p.h - SPRITE_H - oy + k * 18));
+    ctx.restore();
+  }
+
   #drawScarf(p, ox, oy) {
     const s = this.scarf;
     if (!s) return;
     const { ctx } = this;
     const hot = p.dashes > 0 && !p.dashLocked;
+    const pal = hot ? ['#ef5a5a', '#d04a52', '#ff9a8a', '#a8344a'] : ['#7a7196', '#655d84', '#a49cc0', '#4e4868'];
+    const sx = this.shiftX - ox, sy = this.shiftY - oy;
     for (let i = s.length - 1; i >= 1; i--) {
-      const n = s[i];
-      const w = Math.max(1, 4 - Math.floor(i / 2));
-      ctx.fillStyle = hot ? (i < 3 ? '#ef5a5a' : i < 5 ? '#d04a52' : '#b83b4c')
-                          : (i < 3 ? '#7a7196' : i < 5 ? '#655d84' : '#575173');
-      ctx.fillRect(Math.round(n.x + this.shiftX - ox - w / 2), Math.round(n.y + this.shiftY - oy - w / 2), w, w);
+      const a = s[i - 1], b = s[i];
+      const w = i < 2 ? 3 : i < 6 ? 2 : 1;
+      const band = Math.floor(i / 2) % 2;
+      const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y)));
+      for (let k = 0; k <= steps; k++) {
+        const x = Math.round(a.x + (b.x - a.x) * (k / steps) + sx - w / 2);
+        const y = Math.round(a.y + (b.y - a.y) * (k / steps) + sy - w / 2);
+        ctx.fillStyle = i === s.length - 1 ? pal[3] : pal[band];
+        ctx.fillRect(x, y, w, w);
+        if (w > 1) { ctx.fillStyle = pal[2]; ctx.fillRect(x, y, w, 1); }
+      }
     }
+    // the forked tail: a second, shorter tip off the second-last link
+    const t = s[s.length - 2], e = s[s.length - 1];
+    ctx.fillStyle = pal[3];
+    ctx.fillRect(Math.round(t.x + (e.x - t.x) * 0.6 + sx), Math.round(t.y + (e.y - t.y) * 0.6 + sy + 2), 1, 1);
   }
 
   /** The prompt: a key cap over the character and a marker on the lip. */

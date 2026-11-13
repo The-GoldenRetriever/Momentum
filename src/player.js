@@ -175,6 +175,20 @@ export const P = {
 };
 
 const smooth = (a) => a * a * (3 - 2 * a);
+/** The stride at a running speed: which cycle (run, or the long-legged
+ *  sprint), and how long each of its frames holds. Shared with the loading
+ *  screen's runner, so it runs the way the game would at its pace. */
+export function stride(speed) {
+  // One cycle is two strides. The cadence climbs with speed all the way to
+  // the top of the flow meter instead of pinning flat the moment you get
+  // going, but it never gets so quick that the contact and drive poses stop
+  // reading: a blur reads as panic, a long stride reads as speed.
+  const q = smooth(clamp((speed - 60) / (P.RUN_BASE + P.RUN_FLOW - 60), 0, 1));
+  return { name: speed > P.SPRINT_ANIM ? 'sprint' : 'run', rate: P.STRIDE_SLOW + (P.STRIDE_FAST - P.STRIDE_SLOW) * q };
+}
+
+// how long each idle frame holds: breathe in, out, in, out, a beat, a blink
+const IDLE_TIMES = [0.5, 0.5, 0.5, 0.5, 0.7, 0.12];
 
 export class Player {
   constructor(level, fx) {
@@ -209,6 +223,7 @@ export class Player {
     this.maxDashes = 1;
     this.flow = 0;
     this.anim = { name: 'idle', t: 0, frame: 0 };
+    this.edgeDir = 0;          // teetering over a drop on that side (see #edge)
     this.t = {
       coyote: 0, buffer: 0, dash: 0, dashCool: 0, dashBuf: 0, refill: 0, super: 0,
       wallCoyote: 0, wallLock: 0, noSnap: 0, stepFx: 0, land: 0, drop: 0,
@@ -291,6 +306,24 @@ export class Player {
     return P.RUN_BASE + P.RUN_FLOW * Math.min(1, this.flow) + P.RUN_OVER * over;
   }
   get speed() { return Math.abs(this.vx); }
+  /** Which way to draw the character: away from the wall on a wall slide
+   *  (back to it, looking for the next one), towards the drop when teetering
+   *  on a lip, and otherwise the way you face. Only the picture: `facing`,
+   *  which a neutral dash and the rest go by, is untouched. */
+  get look() {
+    if (this.anim.name === 'wall' && this.wallDir !== 0) return -this.wallDir;
+    if (this.anim.name === 'teeter' && this.edgeDir) return this.edgeDir;
+    return this.facing;
+  }
+  /** Stood still with the toes over a drop (a few pixels of the box past the
+   *  lip, on one side only): which side, or 0. */
+  #edge() {
+    if (!this.grounded || Math.abs(this.vx) > 12) return 0;
+    const L = this.level, f = this.footY;
+    const under = (x0, x1) => L.floorUnder(x0, x1, f - 1, f + 4) !== null;
+    const left = under(this.x, this.x + 2), right = under(this.x + this.w - 3, this.x + this.w - 1);
+    return left && !right ? 1 : right && !left ? -1 : 0;
+  }
   get sprinting() { return this.speed > P.RUN_BASE * 0.92; }
 
   /** The slope underfoot runs downhill the way you are going (+1/-1), or 0. */
@@ -421,7 +454,18 @@ export class Player {
       const bob = Math.sin(this.struggle * 22) * 1.5;
       const target = this.sinkSurface + P.DROWN_DEPTH - 3 + bob - this.h;
       this.vy = under ? 60 : (target - this.y) * 12;
-      if (Math.random() < dt * 18)
+      // the water fought: a slap on every third beat of the thrash throws up
+      // spray both ways and sends a ring out over the surface; bubbles all
+      // the while, and more once it is going under
+      const beat = Math.floor((P.STRUGGLE_TIME - this.struggle) / 0.09);
+      if (!under && beat !== this.slapBeat && beat % 4 === 2) {
+        this.fx.spray(this.cx - 4, this.sinkSurface, -1, 120);
+        this.fx.spray(this.cx + 4, this.sinkSurface, 1, 120);
+        this.fx.ring(this.cx, this.sinkSurface, 12, '#dff4ff', 0.35, true);
+      }
+      this.slapBeat = beat;
+      if (Math.random() < dt * (under ? 30 : 10)) this.fx.bubble(this.cx, this.cy, this.sinkSurface);
+      if (Math.random() < dt * 14)
         this.fx.dust(this.cx + (Math.random() - 0.5) * 12, this.sinkSurface, (Math.random() - 0.5) * 60, 2, '#dff4ff');
     } else {
       if (this.sliding) {
@@ -506,6 +550,9 @@ export class Player {
     this.burstTail = 0;
     if (cause === 'water') {                // gone under: the splash was on the way in
       for (let i = 0; i < 6; i++) this.fx.sparkle(this.cx + (Math.random() - 0.5) * 10, this.sinkSurface + 2, '#dff4ff');
+      for (let i = 0; i < 12; i++) this.fx.bubble(this.cx, this.cy + Math.random() * 8, this.sinkSurface);
+      this.fx.ring(this.cx, this.sinkSurface, 18, '#dff4ff', 0.6, true);
+      this.fx.ring(this.cx, this.sinkSurface, 9, '#ffffff', 0.4, true);
     } else if (cause === 'still') {         // caught: frozen where you stood
       this.fx.burst(this.cx, this.cy, 26, '#e8eef8');
       this.fx.shake(4);
@@ -686,11 +733,15 @@ export class Player {
     }
 
     // A wavedash (a slide-dash) hands you more than a dash does; on the
-    // ground, until you are back down to your own top speed, it bleeds off a
-    // little faster than other overspeed, so it is a burst of pace, not a gear.
+    // ground it bleeds off a little faster than other overspeed, so it is a
+    // burst of pace, not a gear. But only down to what a plain dash would have
+    // handed you (dashCarry: the run you were making, plus what running would
+    // have added through the dash), never below it: it used to bleed all the
+    // way to top speed, and a slide-dash came out slower than a dash did.
     if (this.waveRun) {
-      if (this.dashing || Math.abs(this.vx) <= this.topSpeed) this.waveRun = false;
-      else if (onGround) this.vx -= Math.sign(this.vx) * Math.min(P.WAVEDASH_BLEED * dt, Math.abs(this.vx) - this.topSpeed);
+      const floor = Math.max(this.topSpeed, this.waveFloor ?? 0);
+      if (this.dashing || Math.abs(this.vx) <= floor) this.waveRun = false;
+      else if (onGround) this.vx -= Math.sign(this.vx) * Math.min(P.WAVEDASH_BLEED * dt, Math.abs(this.vx) - floor);
     }
 
     // slopes: downhill is free speed, uphill costs a little
@@ -795,6 +846,11 @@ export class Player {
     this.dashSpeed = this.bursting ? P.BURST_DASH : P.DASH_SPEED;
     // the run you were already making in the dash's direction, for the hand-off
     this.dashEntry = Math.sign(this.vx) === Math.sign(this.dashDir.x) ? Math.abs(this.vx) : 0;
+    // ... and what it would have become had you kept running instead: the dash
+    // pays that back at the end (both kinds), so it never costs the speed the
+    // run would have built in the meantime
+    const top = this.topSpeed;
+    this.dashCarry = this.dashEntry >= top ? this.dashEntry : Math.min(top, this.dashEntry + P.ACCEL * P.DASH_TIME);
     this.t.dash = P.DASH_TIME;
     this.t.dashBuf = 0;
     // nothing hands the dash back while it is still going — a dash along the
@@ -822,7 +878,7 @@ export class Player {
     // A dash hands off into a run faster than you can run, and never slower
     // than you were already going its way: dashing off a boost pad used to
     // drop you from 520 to 330, a dash that cost the speed it was meant to add.
-    this.vx = d.x !== 0 ? Math.sign(d.x) * Math.max(P.DASH_END, this.dashEntry ?? 0) : this.vx * 0.4;
+    this.vx = d.x !== 0 ? Math.sign(d.x) * Math.max(P.DASH_END, this.dashCarry ?? this.dashEntry ?? 0) : this.vx * 0.4;
     this.vy = d.y < 0 ? -170 : 0;
     if (this.grounded) this.vy = 0;
     this.airTop = this.footY;      // a dash breaks a fall: water counts from here
@@ -1021,6 +1077,7 @@ export class Player {
       this.vy = 0;
       this.t.super = P.SUPER_WINDOW;
       this.waveRun = true;
+      this.waveFloor = Math.max(P.DASH_END, this.dashCarry ?? 0);   // where its bleed stops, as a dash's hand-off
       // (no bar of its own either: it used to add a quarter of one)
       this.fx.burst(this.cx, this.footY, 16, '#ffe6a8');
       this.fx.ring(this.cx, this.footY, 18, '#ffe6a8', 0.3, true);
@@ -1487,9 +1544,10 @@ export class Player {
     }
     this.lastSpeed = sp;
     if (sp > 150 && (moving || this.sliding || this.slopeRoll || !this.grounded)) {
-      // Nor does a dash fill it, of either kind: not while it is going, and
-      // not on the extra speed a slide-dash (a wavedash) hands you either.
-      if (!this.burstSlow && !this.dashing && !this.waveRun) {
+      // Nor does a dash fill it while it is going, of either kind. After it,
+      // either kind, the run fills it as running always does (a slide-dash's
+      // coast used to fill nothing, and left you a slower runner than a dash).
+      if (!this.burstSlow && !this.dashing) {
         const creep = this.autoBurst && this.flow >= P.BURST_ARM && this.cx >= this.level.burstFrom;
         this.flow += dt * (creep ? P.TOPOFF_GAIN : P.FLOW_GAIN);
       }
@@ -1555,19 +1613,21 @@ export class Player {
     }
 
     let name = 'idle';
-    if (this.struggle > 0) name = 'struggle';
+    if (this.struggle > 0) name = this.struggle < P.STRUGGLE_UNDER ? 'drown' : 'struggle';
     else if (this.dashing) name = 'dash';
     else if (this.rolling > 0) name = 'roll';
     else if (this.sliding) name = 'slide';
     else if (this.crouching || this.h < P.H)
-      name = this.speed > P.SLIDE_EXIT ? 'slide' : 'crouch';
+      name = this.speed > P.SLIDE_EXIT ? 'slide' : this.speed > 12 ? 'crouchwalk' : 'crouch';
     else if (this.wallDir !== 0 && !this.grounded) name = 'wall';
-    else if (!this.grounded && !this.sinking) name = this.vy < 0 ? 'jump' : 'fall';
+    else if (!this.grounded && !this.sinking) name = this.vy < 80 ? 'jump' : 'fall';
     else if (this.t.skid > 0) name = 'skid';
     else if (this.gliding) name = 'glide';
     else if (this.speed > P.SPRINT_ANIM) name = 'sprint';
     else if (this.speed > 12) name = 'run';
     else if (this.t.land > 0.02) name = 'land';
+    this.edgeDir = name === 'idle' ? this.#edge() : 0;
+    if (this.edgeDir) name = 'teeter';
 
     // run and sprint are the same cycle at different leans: crossing between
     // them should change the pose, not restart the stride
@@ -1584,12 +1644,7 @@ export class Player {
     } else if (name === 'skid') {
       a.frame = Math.abs(this.vx) > P.SKID_MIN * 1.3 ? 0 : 1;   // brace, then pivot
     } else if (strides) {
-      // One cycle is two strides. The cadence climbs with speed all the way to
-      // the top of the flow meter instead of pinning flat the moment you get
-      // going, but it never gets so quick that the contact and drive poses
-      // stop reading — a blur reads as panic, a long stride reads as speed.
-      const q = smooth(clamp((this.speed - 60) / (P.RUN_BASE + P.RUN_FLOW - 60), 0, 1));
-      const rate = P.STRIDE_SLOW + (P.STRIDE_FAST - P.STRIDE_SLOW) * q;
+      const { rate } = stride(this.speed);
       while (a.t > rate) {
         a.t -= rate;
         a.frame = (a.frame + 1) % n;
@@ -1597,7 +1652,22 @@ export class Player {
         if (a.frame % 3 === 0) this.footfall = true;
       }
     } else if (name === 'idle') {
-      while (a.t > 0.5) { a.t -= 0.5; a.frame = (a.frame + 1) % n; }
+      while (a.t > IDLE_TIMES[a.frame % IDLE_TIMES.length]) { a.t -= IDLE_TIMES[a.frame % IDLE_TIMES.length]; a.frame = (a.frame + 1) % n; }
+    } else if (name === 'jump') {
+      a.frame = this.vy < -300 ? 0 : this.vy < -90 ? 1 : 2;          // takeoff, rising, apex
+    } else if (name === 'fall') {
+      a.frame = Math.floor(a.t / 0.11) % n;                          // flailing
+    } else if (name === 'land') {
+      a.frame = this.t.land > 0.07 ? 0 : 1;                          // the hit, then up out of it
+    } else if (name === 'dash') {
+      const d = this.dashDir;                                        // the way it is going
+      a.frame = Math.abs(d.x) > 0.35 ? 0 : d.y < 0 ? 1 : 2;
+    } else if (name === 'teeter') {
+      a.frame = Math.floor(a.t / 0.13) % n;                          // arms windmilling
+    } else if (name === 'crouch') {
+      a.frame = Math.floor(a.t / 0.6) % n;                           // breathing, ducked
+    } else if (name === 'crouchwalk') {
+      a.frame = Math.floor(a.t / 0.11) % n;                          // the shuffle
     } else if (name === 'struggle') {
       while (a.t > 0.09) { a.t -= 0.09; a.frame = (a.frame + 1) % n; }
     } else a.frame = 0;

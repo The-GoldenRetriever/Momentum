@@ -1434,6 +1434,10 @@ function feetFirst() {
   const slideOnly = P.WAVEDASH_X - P.SLIDE_FRICTION * 0.4;
   check('and its speed, slid on, lasts less than a slide alone would keep it', slid.at < slideOnly - P.WAVEDASH_BLEED * 0.8,
     `${slid.at.toFixed(0)} px/s a second on, against ${slideOnly} on friction alone`);
+  // like a dash, it pays back the run you would have made: stood up out of
+  // it, a second on you are no slower than after a plain dash
+  check('and stood up out of, it leaves you no slower than a plain dash does', wave.at >= plain.at - 2,
+    `${wave.at.toFixed(0)} px/s a second on, against ${plain.at.toFixed(0)} after a dash`);
 }
 
 // 43. coming down off a burst's speed the bar does not fill: not until you

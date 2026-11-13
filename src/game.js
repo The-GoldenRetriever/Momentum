@@ -1,17 +1,17 @@
 // game.js — ties the level, the player and the world objects together.
 
-import { LEVELS } from './levels/index.js';
+import { LEVELS, medalTimes } from './levels/index.js';
 import { TILE, clamp } from './level.js';
 import { updateMechanics, resetMechanics } from './mechanics.js';
 import { Player, P } from './player.js';
 import { Fx } from './particles.js';
 import { Camera } from './camera.js';
-import { Renderer, VIEW_W, VIEW_H } from './render.js';
+import { Renderer, VIEW_W, VIEW_H, THEMES } from './render.js';
 import { drawHud } from './hud.js';
 import { BindMenu } from './binds.js';
 import { Menus } from './menus.js';
 import { sfx } from './audio.js';
-import { WALK_SPEED, WALK_MAX, OFF_EDGE, FADE_TIME, LOAD_TIME, drawLetterbox, drawFade, drawLoading } from './cutscene.js';
+import { WALK_SPEED, WALK_MAX, OFF_EDGE, FADE_TIME, LOAD_TIME, TIPS, drawLetterbox, drawFade, drawLoading, levelMap } from './cutscene.js';
 
 import { store, LAST_KEY, AUTO_KEY, migrateSave, seedBoards, bestTime, setBest, lastUnlocked, unlocked } from './save.js';
 
@@ -86,7 +86,7 @@ export class Game {
     this.cutscene = { phase: 'walk', t: 0, out: null, next: this.levelIndex + 1 };
   }
 
-  #cutsceneStep(dt, realDt) {
+  #cutsceneStep(dt, realDt, input) {
     const cs = this.cutscene;
     cs.t += realDt;
     if (cs.phase === 'walk') {
@@ -109,7 +109,8 @@ export class Game {
         store.set(LAST_KEY, String(cs.next));
         cs.loaded = true;
       }
-      if (cs.loaded && cs.t >= LOAD_TIME) { this.cutscene = null; this.fade = 1; }
+      const skip = cs.loaded && cs.t > 0.6 && (input?.hit('jump') || input?.hit('confirm'));
+      if (cs.loaded && (cs.t >= LOAD_TIME || skip)) { this.cutscene = null; this.fade = 1; }
     }
   }
 
@@ -179,7 +180,7 @@ export class Game {
       this.menu.update(realDt);
       return;
     }
-    if (this.cutscene) { this.#cutsceneStep(dt, realDt); return; }
+    if (this.cutscene) { this.#cutsceneStep(dt, realDt, input); return; }
 
     // Title and level select: the world is scenery, panning past.
     const ui = this.ui.screen;
@@ -281,9 +282,23 @@ export class Game {
     }
   }
 
+  /** What the loading screen shows of level `n`: built here as plain data
+   *  (cheap; the bake is what takes the time, and that comes after), for its
+   *  theme and its shape, with the best time, the medals, and a tip. */
+  #loadingInfo(n) {
+    const lv = LEVELS[n], L = lv.build();
+    const theme = THEMES[L.theme] ?? THEMES.night;
+    return { theme, map: levelMap(L, theme.edge), best: bestTime(lv), medals: medalTimes(lv),
+             tip: TIPS[Math.floor(Math.random() * TIPS.length)], loadTime: LOAD_TIME };
+  }
+
   #drawFrame(dt, realDt) {
     const cs = this.cutscene;
-    if (cs && cs.phase === 'load') { drawLoading(this.ctx, cs.t, cs.next, LEVELS[cs.next]); return; }
+    if (cs && cs.phase === 'load') {
+      cs.info ??= this.#loadingInfo(cs.next);
+      drawLoading(this.ctx, cs.t, cs.next, LEVELS[cs.next], cs.info);
+      return;
+    }
     if (cs) {                     // the walk-off: the world, bars, and a fade out
       this.renderer.hideActors = false;
       this.renderer.draw(this, dt, realDt);

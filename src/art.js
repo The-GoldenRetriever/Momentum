@@ -78,19 +78,30 @@ function sheet(list) {
 // Head: rows 1-7, torso: rows 8-12, legs: rows 13-17.
 
 const HEAD = {
+  // (a lock of hair flicks out behind, and a streak of light runs across it)
   level: rows(
     '.......kkkk.....',
-    '.....khhhhhhk...',
-    '....khHGgggGk...',
+    '.....khHHhhhk...',
+    '...kkhHGgggGk...',
     '....khhssssSk...',
     '....khhssewSk...',
     '....khhsssSk....',
     '.....kkSssk.....',
   ),
+  // the same, eyes shut: the idle's blink
+  blink: rows(
+    '.......kkkk.....',
+    '.....khHHhhhk...',
+    '...kkhHGgggGk...',
+    '....khhssssSk...',
+    '....khhssKKSk...',
+    '....khhsssSk....',
+    '.....kkSssk.....',
+  ),
   up: rows(
     '.......kkkk.....',
-    '.....khhhhhhk...',
-    '....khHGgggGk...',
+    '.....khHHhhhk...',
+    '...kkhHGgggGk...',
     '....khhsssSSk...',
     '....khhsewssk...',
     '....khhssssk....',
@@ -99,8 +110,8 @@ const HEAD = {
   down: rows(
     '................',
     '.......kkkkk....',
-    '.....khhhhhhk...',
-    '....khHGgggGk...',
+    '.....khHHhhhk...',
+    '...kkhHGgggGk...',
     '....khhsssSk....',
     '....khhsewSk....',
     '.....kkssskk....',
@@ -173,6 +184,14 @@ const ARMS = {
     '..........kck...',
     '..kCk....kck....',
     '..kCk.....kk....',
+    '..kKk...........',
+    '...k............',
+  ),
+  // falling: arms flung up and out, the other half of the flail
+  flail: rows(
+    '.kck........kck.',
+    '..kck......kck..',
+    '..kCk......kk...',
     '..kKk...........',
     '...k............',
   ),
@@ -329,6 +348,15 @@ const LEGS = {
     '...kppk..kppk...',
     '...knnk..knnk...',
   ),
+  // back to the wall: the near leg bent with its boot pressed on the rock
+  // behind, the other hanging, ready to kick off for the next wall
+  wallback: rows(
+    '...kpppppppk....',
+    '..kkppk.kppk....',
+    '.knnpk..kppk....',
+    '.kkkk...kppk....',
+    '........knnk....',
+  ),
   tuck: rows(                      // knees up, feet under the hips
     '...kpppppppk....',
     '..kppkkkpppk....',
@@ -397,19 +425,44 @@ const SLIDE_POSE = sheet(rows(
   '..kkkkkkkkkkkk..',
 ));
 
-// Ten rows tall: a duck has to actually fit under the low rock.
-const CROUCH_POSE = sheet(rows(
-  '......kkkk......',
-  '....khhhhhhk....',
-  '....khHGgggGk...',
-  '....khhsewSk....',
-  '...kkkssskkk....',
-  '..kCrrrrrrrkck..',
-  '..kCcccLccckkck.',
-  '...kbbbbbbbk..k.',
-  '..kppppppppk....',
-  '..knnk..knnk....',
-));
+// Ten rows tall: a duck has to actually fit under the low rock. A real squat:
+// knees forward, the forearm resting on the front knee, the head low over
+// it; the hair flick and highlight match the standing head.
+const CROUCH_TOP = rows(
+  '.....kkkk.......',
+  '...khHHhhhk.....',
+  '.kkhHGgggGk.....',
+  '...khhssewSk....',
+  '...kkhsssSk.....',
+  '..krrrrrrrrk....',
+  '..kcccLccckcck..',
+  '..kcCcccccksk...',
+);
+// ... breathing out: the head sunk a pixel into the collar
+const CROUCH_LOW = rows(
+  '................',
+  '.....kkkk.......',
+  '...khHHhhhk.....',
+  '.kkhHGgggGk.....',
+  '...khhssewSk....',
+  '..krrrrrrrrk....',
+  '..kcccLccckcck..',
+  '..kcCcccccksk...',
+);
+// the legs, in a shuffle: apart, together, the other way apart, together
+const CROUCH_LEGS = [
+  rows('..kbbbbbbkppppk.', '.knnnkpppkknnnk.'),
+  rows('..kbbbbbbbkppk..', '...kknnnkknnnk..'),
+  rows('..kbbbbbbbkpppk.', '..knnnkkpknnnk..'),
+  rows('..kbbbbbbbkppk..', '...kknnnkknnnk..'),
+];
+const crouch = (top, legs) => sheet([...top, ...legs]);
+const CROUCH = [crouch(CROUCH_TOP, CROUCH_LEGS[0]), crouch(CROUCH_LOW, CROUCH_LEGS[0])];
+// shuffling along ducked: a pixel of bob on each pass
+const CROUCH_WALK = [
+  crouch(CROUCH_TOP, CROUCH_LEGS[0]), crouch(CROUCH_LOW, CROUCH_LEGS[1]),
+  crouch(CROUCH_TOP, CROUCH_LEGS[2]), crouch(CROUCH_LOW, CROUCH_LEGS[3]),
+];
 
 // Turning at speed: feet thrown out ahead of you, weight thrown back against
 // them, already facing the way you are about to go.
@@ -615,6 +668,19 @@ const STRUGGLE_UP = over(body('stand', { arms: 'none', head: 'up' }), rows(
   '..kCk......kck..',
 ));
 
+// Going under: one arm left above the water, reaching straight up.
+const DROWN_REACH = over(body('stand', { arms: 'none', head: 'up' }), rows(
+  '............ksk.',
+  '............kck.',
+  '............kck.',
+  '............kck.',
+  '............kck.',
+  '............kck.',
+  '............kck.',
+  '............kck.',
+  '...........kck..',
+));
+
 const ROLL = [
   ROLL_STAGES[0],                       // step off the edge and tuck
   sheet(BALL),                          // ... and away it goes, one ball turned
@@ -625,9 +691,15 @@ const ROLL = [
 ];
 
 export const FRAMES = {
+  // breathing (the head settling into the shoulders and lifting again), and
+  // every so often a blink; the player times them (IDLE_TIMES)
   idle: [
     body('stand', { arms: 'idle' }),
     body('stand', { arms: 'idle', drop: 1 }),
+    body('stand', { arms: 'idle' }),
+    body('stand', { arms: 'idle', drop: 1 }),
+    body('stand', { arms: 'idle' }),
+    body('stand', { arms: 'idle', head: 'blink' }),
   ],
   // contact, pass, drive — twice over, with the hips dropping onto each
   // footfall and floating between them
@@ -651,20 +723,60 @@ export const FRAMES = {
     body('spr4', { arms: 'back', head: 'fast', torso: 'fast', lean: 3 }),
     body('spr5', { arms: 'driveF', head: 'fast', torso: 'fast', lean: 3, lift: 2 }),
   ],
-  jump: [body('jump', { arms: 'up', head: 'up', lean: 1 })],
-  fall: [body('fall', { arms: 'brace', head: 'down' })],
-  wall: [body('wall', { arms: 'wall', lean: -1 })],
-  land: [body('tuck', { arms: 'brace', head: 'down', drop: 2 })],
+  // takeoff (reaching up), rising (arms coming down), and the apex, tucked
+  jump: [
+    body('jump', { arms: 'up', head: 'up', lean: 1 }),
+    body('jump', { arms: 'fwd', head: 'up', lean: 1 }),
+    body('tuck', { arms: 'brace', head: 'level' }),
+  ],
+  // coming down: arms flailing between braced and flung up
+  fall: [
+    body('fall', { arms: 'brace', head: 'down' }),
+    body('fall', { arms: 'flail', head: 'down' }),
+  ],
+  // Back to the wall, facing out (the renderer turns it to face away from the
+  // wall): a hand thrown back onto the rock, a boot braced on it, the head up
+  // and looking for the next wall.
+  wall: [body('wallback', { arms: 'swingB', lean: 1 })],
+  // right on the lip with nothing under the toes: leaning out over it, arms
+  // windmilling to stay up (the renderer turns it to face the drop)
+  teeter: [
+    body('stand', { arms: 'flail', head: 'down', lean: 2 }),
+    body('stand', { arms: 'brace', head: 'down', lean: 1 }),
+    body('stand', { arms: 'up', head: 'level', lean: 2 }),
+    body('stand', { arms: 'brace', head: 'down', lean: 1 }),
+  ],
+  // the hit (knees deep, head down) and the rise out of it
+  land: [
+    body('tuck', { arms: 'brace', head: 'down', drop: 2 }),
+    body('stand', { arms: 'brace', drop: 1 }),
+  ],
   skid: SKID,
-  dash: [DASH_POSE],
+  // along the ground (or a diagonal), straight up, straight down
+  dash: [
+    DASH_POSE,
+    body('jump', { arms: 'up', head: 'up' }),
+    body('tuck', { arms: 'brace', head: 'down' }),
+  ],
   slide: [SLIDE_POSE],
-  crouch: [CROUCH_POSE],
+  crouch: CROUCH,
+  crouchwalk: CROUCH_WALK,
   vault: VAULT_UP,
   roll: ROLL,
   // carried along on ice with the stick let go: arms out for balance
   glide: [body('stand', { arms: 'brace', lean: 1 })],
   // head going under: arms thrown up out of the water, then flung out wide
-  struggle: [STRUGGLE_UP, body('stand', { arms: 'brace', head: 'up', drop: 1 })],
+  // Fighting it at the surface, a four-beat thrash: both arms thrown up, one
+  // reaching while the other comes down, both slapping the water flat (the
+  // splash: see Player.#sinkStep), the other arm up.
+  struggle: [
+    STRUGGLE_UP,
+    body('stand', { arms: 'up', head: 'up', drop: 1 }),
+    body('stand', { arms: 'brace', head: 'level', drop: 2 }),
+    body('stand', { arms: 'swingB', head: 'up', drop: 1 }),
+  ],
+  // ... and going under for good: one hand left above the water
+  drown: [DROWN_REACH],
 };
 
 /** How many frames each animation owns — the player uses this to cycle. */
@@ -694,24 +806,7 @@ function bake(rowsIn, flip) {
       ctx.fillRect(flip ? SPRITE_W - 1 - x : x, y, 1, 1);
     }
   }
-  outline(c);
   return c;
-}
-
-// A dark rim round the figure (every empty pixel touching it), so it reads
-// against busy rock and bright sky alike.
-function outline(c) {
-  const ctx = c.getContext('2d');
-  const img = ctx.getImageData(0, 0, c.width, c.height), d = img.data, w = c.width, h = c.height;
-  const solid = (x, y) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] > 0;
-  const rim = [];
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (!solid(x, y) && (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1))) rim.push((y * w + x) * 4);
-    }
-  }
-  for (const i of rim) { d[i] = 0x12; d[i + 1] = 0x0c; d[i + 2] = 0x22; d[i + 3] = 230; }
-  ctx.putImageData(img, 0, 0);
 }
 
 // Solid-colour stamp of a sprite, used for dash afterimages.
@@ -727,6 +822,7 @@ function tint(src, colour) {
 
 export const sprites = {};   // sprites[name][dir 0=right,1=left][frame]
 export const ghosts = {};    // same shape, flat cyan silhouettes
+export const ghostsSoft = {}; // ... and violet ones, for a plain sprint's smear
 
 export function buildArt() {
   for (const [name, frames] of Object.entries(FRAMES)) {
@@ -737,6 +833,10 @@ export function buildArt() {
     ghosts[name] = [
       sprites[name][0].map((s) => tint(s, '#9cf6ff')),
       sprites[name][1].map((s) => tint(s, '#9cf6ff')),
+    ];
+    ghostsSoft[name] = [
+      sprites[name][0].map((s) => tint(s, '#b4a4ff')),
+      sprites[name][1].map((s) => tint(s, '#b4a4ff')),
     ];
   }
 }

@@ -66,8 +66,13 @@ game.cam.follow(game.player, 0.5);
 // &next=<steps> finishes the level after the run, picks "next level" and
 // plays that many steps of the walk-off / loading screen before grabbing
 if (q.has('next')) {
+  // (straight into the walk-off, past the unlocks and medal gates and the
+  // leaderboard's signing, as ?level= is past the locks: this is for looking)
   game.finished = true;
-  game.nextLevel();
+  game.ui.close();
+  game.player.standDown();
+  game.level.exitOpen = true;
+  game.cutscene = { phase: 'walk', t: 0, out: null, next: Math.min(game.levelIndex + 1, 10) };
   const idle = new Keys();
   for (let i = 0; i < Number(q.get('next')); i++) game.update(1 / 120, idle, 1 / 120);
 }
@@ -93,5 +98,6 @@ if (menuArg) {
   if (q.has('note')) { game.menu.note = q.get('note'); game.menu.noteT = 1; }
 }
 game.draw(1 / 150, 1 / 60);
-document.title = 'ready';
+// the player's place on the frame (game pixels), for cropping a close-up
+document.title = `ready @${Math.round(game.player.cx - game.cam.x)},${Math.round(game.player.cy - game.cam.y)}`;
 </script>

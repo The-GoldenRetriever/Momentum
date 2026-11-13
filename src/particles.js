@@ -63,6 +63,16 @@ export class Fx {
     });
   }
 
+  /** A bubble rising through water, wobbling, popping when it reaches the
+   *  surface (`surface`, a world y). */
+  bubble(x, y, surface) {
+    this.#add({
+      x: x + (Math.random() - 0.5) * 6, y, vx: (Math.random() - 0.5) * 14, vy: -25 - Math.random() * 35,
+      life: 0.5 + Math.random() * 0.6, max: 1.1, size: Math.random() < 0.4 ? 2 : 1,
+      colour: Math.random() < 0.5 ? '#dff4ff' : '#9fdcff', grav: -40, ceil: surface, bubble: true,
+    });
+  }
+
   /** A shockwave: a ring that swells to `r` and fades. `flat` squashes it to
    *  an ellipse lying on the ground, for an impact underfoot. */
   ring(x, y, r, colour = '#9cf6ff', life = 0.3, flat = false) {
@@ -85,6 +95,8 @@ export class Fx {
       p.y += p.vy * dt;
       p.vy += p.grav * dt;
       p.vx *= 1 - Math.min(1, dt * 3);
+      if (p.bubble) p.x += Math.sin(p.life * 18) * 8 * dt;   // the wobble
+      if (p.ceil !== undefined && p.y < p.ceil) p.life = 0;  // popped at the surface
     }
     this.parts = this.parts.filter((p) => p.life > 0);
 
