@@ -1,5 +1,5 @@
 // Headless sanity dump of a level. Run with: jsc -m tools/dump-level.js -- <from> <to> [level]
-// where [level] is a 1-based index into levels/index.js (default 1, the test area).
+// where [level] is a 1-based index into levels/index.js (default 1, the tutorial; the test area is 2).
 import { LEVELS } from '../src/levels/index.js';
 import { T } from '../src/level.js';
 

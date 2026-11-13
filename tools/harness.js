@@ -3,7 +3,7 @@
 // DOM-free (jsc's `print`, no console), and importing it runs nothing.
 
 import { TILE } from '../src/level.js';
-import { Player } from '../src/player.js';
+import { Player, P } from '../src/player.js';
 import { Fx } from '../src/particles.js';
 import { updateMechanics, resetMechanics } from '../src/mechanics.js';
 import { buildTestArea } from '../src/levels/test-area.js';
@@ -30,24 +30,40 @@ export class Keys {
   get moveY() { return (this.held('down') ? 1 : 0) - (this.held('up') ? 1 : 0); }
 }
 
-export function makeSim(at = { x: 6, y: 26 }, custom = null) {
+// `warp` runs the game's clock as main.js does: the world slows with the
+// player's wind-up and burst (eased the same way), each step is STEP of real
+// time and STEP x scale of world time. Without it every step is a full STEP of
+// world time, slow motion or not, which is all most checks need; a check that
+// cares where a wind-up's seconds of real time put you wants it on.
+export function makeSim(at = { x: 6, y: 26 }, custom = null, { warp = false } = {}) {
   const level = custom ?? buildTestArea();
   const fx = new Fx();
   const p = new Player(level, fx);
+  // Off unless a check asks for it: the course bot's runs (and so par) are
+  // run without bursts, and most checks want a full bar to stay a full bar.
+  p.autoBurst = false;
   p.reset(at.x * TILE, at.y * TILE);
   resetMechanics(level, p.x);          // (the Stillness, if any, starts behind you)
   const keys = new Keys();
+  let scale = 1;
   const run = (steps, held = [], onStep = null) => {
     for (let i = 0; i < steps; i++) {
       keys.set(typeof held === 'function' ? held(i) : held);
-      p.update(STEP, keys);
-      updateMechanics(level, p, STEP);
+      let dt = STEP;
+      if (warp) {
+        const target = p.warp;
+        const rate = target >= scale ? 9 : p.bursting ? 30 : 3;
+        scale += (target - scale) * Math.min(1, STEP * rate);
+        dt = STEP * Math.max(scale, P.BURST_SCALE);
+      }
+      p.update(dt, keys, STEP);
+      updateMechanics(level, p, dt);
       keys.step();
-      fx.update(STEP);
+      fx.update(dt);
       if (onStep) onStep(i, p);
     }
   };
-  return { level, p, fx, keys, run };
+  return { level, p, fx, keys, run, get scale() { return scale; } };
 }
 
 // The course bot (sim.js check 32): holds right, taps C at each prompt,
@@ -57,7 +73,14 @@ export function makeSim(at = { x: 6, y: 26 }, custom = null) {
 // `jump` (a full jump right there, ground ahead or not), `slide` (duck and
 // slide the whole zone, never jumping in it),
 // `dash` (directions, pressed again and again until a dash starts; `vy`
-// waits for the top of a jump). Wall-jump shafts are climbed. `flowCap`
+// waits for the top of a jump), `roll` (C held down the slope in it),
+// `vault` (never jump in it: a ledge across a gap, where the edge comes
+// before the prompt does, and C at the prompt is the way over) and
+// `autoburst` (V, once, as it comes in). Wall-jump shafts are climbed.
+// `noVault` never presses C at a prompt (to prove a ledge needs it).
+// `autoBurst` is where V's switch starts (off, as makeSim leaves it) and
+// `warp` runs the game's slow motion (see makeSim): a route with a burst in
+// it wants both, or its wind-up would take seconds of world time. `flowCap`
 // ([tile, bar]) holds the bar down past a tile, to prove a stretch needs top
 // gear. `onJump` hears about every takeoff and landing (tools/route.js
 // prints them, for placing geometry where the jumps come down). `expert` also
@@ -69,10 +92,11 @@ export function makeSim(at = { x: 6, y: 26 }, custom = null) {
 // or the last wall kick, dash or spring before it, since those re-aim you),
 // and stay on screen from the top of the arc down. Each one that is not comes
 // back in `blind`.
-export function flatOut(build, from, phaseT, { tunnels = [], shafts = [], zones = [], flowCap = null, onJump = null, force = null, expert = false, onStep = null, pause = null } = {}) {
-  const sim = makeSim(from, build());
+export function flatOut(build, from, phaseT, { tunnels = [], shafts = [], zones = [], flowCap = null, onJump = null, force = null, expert = false, onStep = null, pause = null, warp = false, autoBurst = false, limit = 40, noVault = false } = {}) {
+  const sim = makeSim(from, build(), { warp });
   sim.level.phaseT = phaseT;
   const p = sim.p;
+  p.autoBurst = autoBurst;
   // level floor and open air for the next ten tiles (the expert's dash check)
   const clearAhead = () => {
     const L = sim.level;
@@ -96,14 +120,17 @@ export function flatOut(build, from, phaseT, { tunnels = [], shafts = [], zones 
   let dashedLast = false;          // (expert: a dash press needs a release before the next)
   let chaseMin = Infinity;         // the closest the Stillness came, in tiles
   const hopAt = new Map();         // ... and how long it held each one, if it let go early
-  sim.run(120 * 40, () => {
+  let clock = 0;                   // world time: the run clock, which slow motion slows too
+  sim.run(120 * limit, () => {
     step++;
     // `pause` ([step, n]): let go of everything for n steps, as a player who
     // hesitates would (the Stillness check uses it)
     if (pause && step >= pause[0] && step < pause[0] + pause[1]) return [];
     const x = p.cx / TILE, y = p.footY / TILE;
     let k = ['right'];
-    if (hold > 0) { hold--; if (step < letGoAt || (letGoAt < 0 && (p.vy < 0 || hold > 32))) k.push('jump'); }
+    // (the hold counts world time: in slow motion a player holds the key as
+    //  long as the jump takes, not for a fixed number of their own frames)
+    if (hold > 0) { hold = Math.max(0, hold - (warp ? Math.max(sim.scale, P.BURST_SCALE) : 1)); if (step < letGoAt || (letGoAt < 0 && (p.vy < 0 || hold > 32))) k.push('jump'); }
     const wasGap = gap;
     gap = false;
     if (wasGap) return [...dashKeys];                     // a release between dash presses
@@ -127,15 +154,17 @@ export function flatOut(build, from, phaseT, { tunnels = [], shafts = [], zones 
     if (z && !used.has(zi)) {
       if (z.hop && p.grounded && !quiet) { used.add(zi); hold = 40; letGoAt = step + z.hop; presses.push(step); hopAt.set(step, z.hop); return ['right', 'jump']; }
       if (z.jump && p.grounded && !quiet) { used.add(zi); hold = 40; letGoAt = -1; presses.push(step); return ['right', 'jump']; }
+      if (z.autoburst) { used.add(zi); return ['right', 'autoburst']; }
       if (z.dash && !p.grounded && p.dashes > 0 && !p.dashing && (z.vy === undefined || p.vy > z.vy)) {
         pending = zi; dashKeys = [...z.dash]; gap = true;
         return [...z.dash, 'dash'];
       }
     }
-    if (p.cue && !fresh) k.push('vault');
+    if (p.cue && !fresh && !noVault) k.push('vault');
     fresh = !!p.cue;
+    if (z && z.roll && !k.includes('vault')) k.push('vault');
     const ducking = inTunnel(x) || !!(z && z.slide);
-    if (p.grounded && hold === 0 && !p.cue && !ducking && !(z && z.hop) && !quiet) {
+    if (p.grounded && hold === 0 && !p.cue && !ducking && !(z && (z.hop || z.vault)) && !quiet) {
       const ahead = p.x + p.w + Math.max(6, Math.abs(p.vx) * 0.04);
       // no floor ahead, or spikes where your boots would go (a reef): jump
       const spikes = sim.level.boxHitsSpikes(ahead - 2, p.y + 10, 6, p.h);   // (boots and below)
@@ -158,7 +187,9 @@ export function flatOut(build, from, phaseT, { tunnels = [], shafts = [], zones 
     if (onJump && pl.grounded !== wasOn) onJump({ up: wasOn, x: pl.cx / TILE, y: pl.footY / TILE, vx: pl.vx, flow: pl.flow, step });
     wasOn = pl.grounded;
     if (pl.dashing && pending !== null) { used.add(pending); pending = null; }
-    cam.follow(pl, STEP);
+    const dt = warp ? STEP * Math.max(sim.scale, P.BURST_SCALE) : STEP;
+    clock += dt;
+    cam.follow(pl, dt);
     if (onStep) onStep(pl, step, sim.level);
     if (!pl.dead && !pl.grounded) {
       // a kick, a dash or a spring re-aims the jump: it is committed to anew
@@ -184,7 +215,7 @@ export function flatOut(build, from, phaseT, { tunnels = [], shafts = [], zones 
     if (pl.grounded && Math.abs(pl.vx) < 60 && !shaftAt(pl.cx / TILE, pl.footY / TILE)) stopped++;
     const g = sim.level.goal;               // touching it, as the game asks, not just passing under it
     // (and like the game, the goal stops the Stillness: once there, it has lost)
-    if (pl.x + pl.w > g.x && pl.x < g.x + g.w && pl.footY > g.y && pl.y < g.y + g.h) { reached = true; time = step / 120; g.hit = true; }
+    if (pl.x + pl.w > g.x && pl.x < g.x + g.w && pl.footY > g.y && pl.y < g.y + g.h) { reached = true; time = clock; g.hit = true; }
   });
   // `time` is how long it took to touch the goal: a level's par (index.js)
   return { reached: reached && !p.dead, stopped: stopped / 120, at: (p.cx / TILE).toFixed(0), time, blind, chaseMin, death: p.deathCause ?? null, presses, hops: presses.map((s) => hopAt.get(s) ?? 0) };

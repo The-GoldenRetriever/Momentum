@@ -65,11 +65,13 @@ function frame(now) {
   game.fps = fpsAvg;
 
   // A burst slows the world down — including the run clock, which only ticks
-  // on simulated time. Easing the scale keeps the transition from snapping, and
-  // it drops in far faster than it lifts: the whole point of the wind-up beat
-  // is that the world is already crawling by the time the burst fires.
-  const target = game.player.timeWarped ? P.BURST_SCALE : 1;
-  scale += (target - scale) * Math.min(1, dt * (target < scale ? 30 : 9));
+  // on simulated time. Easing the scale keeps the transition from snapping.
+  // The wind-up sinks into its slow motion gently, over most of a second (the
+  // world winding down is the warning), and the burst firing drops it the
+  // rest of the way at once; switching it off lifts it about as fast.
+  const target = game.player.warp;
+  const rate = target >= scale ? 9 : game.player.bursting ? 30 : 3;
+  scale += (target - scale) * Math.min(1, dt * rate);
   game.timeScale = scale;
 
   input.poll();

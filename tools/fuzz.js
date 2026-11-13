@@ -4,6 +4,7 @@ import { makeSim } from './harness.js';
 import { TILE } from '../src/level.js';
 import { LEVELS } from '../src/levels/index.js';
 import { updateMechanics } from '../src/mechanics.js';
+import { P } from '../src/player.js';
 
 const ACTIONS = ['left', 'right', 'up', 'down', 'jump', 'dash', 'vault'];
 let rng = 12345;
@@ -29,10 +30,12 @@ for (const lv of LEVELS) {
       }
       // Force a burst in now and then: burst speed is where tunnelling would show up
       // if it ever could, and random input almost never fills the bar by itself.
+      // (Straight in, past the wind-up: its seconds of slow motion would eat
+      // most of a run here, where nothing slows the world down.)
       const keys = [...held];
       if (i % 120 === 0) {
-        sim.p.flow = 1;
-        if (Math.abs(sim.p.vx) > 280) keys.push('burst');
+        sim.p.flow = P.FLOW_MAX;
+        if (Math.abs(sim.p.vx) > 280 && !sim.p.bursting) sim.p.startBurst();
       }
       sim.keys.set(keys);
       sim.p.update(1 / 120, sim.keys);

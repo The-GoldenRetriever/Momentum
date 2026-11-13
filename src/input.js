@@ -13,7 +13,9 @@ export const DEFAULT_BINDS = {
   jump:  ['Space', 'KeyZ', 'KeyJ', 'ArrowUp', 'KeyW'],
   dash:  ['ShiftLeft', 'ShiftRight', 'KeyX', 'KeyK'],
   vault: ['KeyC', 'KeyL'],          // ledges: vault up, roll down (hold to chain)
-  burst: ['KeyV', 'Semicolon'],     // cash a full flow bar in for bullet time
+  // There is no burst key: a topped-up bar bursts by itself. V switches that
+  // off (and on), for the stretches where the bar is worth more than a burst.
+  autoburst: ['KeyV'],
   respawn: ['KeyR'],
   restart: ['KeyT'],
   next:  ['KeyN'],                  // on to the next level, from the results panel
@@ -38,7 +40,7 @@ export const ACTIONS = [
   ['jump', 'jump'],
   ['dash', 'dash'],
   ['vault', 'vault / roll'],
-  ['burst', 'burst'],
+  ['autoburst', 'auto-burst on/off'],
   ['respawn', 'respawn'],
   ['restart', 'restart run'],
   ['next', 'next level'],
@@ -97,7 +99,7 @@ const PAD = { // standard gamepad button indices
   jump: [0],
   vault: [3],
   dash: [2, 1, 5, 7],
-  burst: [6, 4],
+  autoburst: [6, 4],
   pause: [9],                       // start
   restart: [8],                     // back / select
   left: [14], right: [15], up: [12], down: [13],

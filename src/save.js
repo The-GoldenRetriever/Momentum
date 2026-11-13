@@ -2,7 +2,7 @@
 // is also what unlocks the next one) and the last level started.
 // Browser-only (localStorage), so the headless modules never import it.
 
-import { LEVELS } from './levels/index.js';
+import { LEVELS, medalsShort, needsText } from './levels/index.js';
 
 // Bumped when a change to the game makes old saves meaningless. A save from
 // an earlier version has its times wiped once, on the first load after: the
@@ -11,6 +11,8 @@ import { LEVELS } from './levels/index.js';
 const SAVE_VERSION = '3';
 const VERSION_KEY = 'momentum.save';
 export const LAST_KEY = 'momentum.last';
+// V's auto-burst switch, kept between visits ('off', or anything else for on)
+export const AUTO_KEY = 'momentum.autoburst';
 
 export const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -37,8 +39,27 @@ const bestKey = (lv) => `momentum.best.${lv.id}`;
 export function bestTime(lv) { return Number(store.get(bestKey(lv))) || 0; }
 export function setBest(lv, t) { store.set(bestKey(lv), String(t)); }
 
-/** You have to beat a level to open the next: the first is always open. */
-export function unlocked(i) { return i <= 0 || bestTime(LEVELS[i - 1]) > 0; }
+/** You have to beat a level to open the next, and some levels ask for medals
+ *  as well (their `needs`, see levels/index.js): the first is always open. */
+export function unlocked(i) {
+  return i <= 0 || (bestTime(LEVELS[i - 1]) > 0 && medalsShort(LEVELS[i], bestTime).length === 0);
+}
+
+/** Why level `i` is shut, as lines for the level select (empty if it is open). */
+export function lockReason(i) {
+  if (unlocked(i)) return [];
+  const lines = [];
+  if (!(bestTime(LEVELS[i - 1]) > 0)) lines.push(`beat ${LEVELS[i - 1].name} to open this one`);
+  const short = medalsShort(LEVELS[i], bestTime);
+  if (short.length) {
+    lines.push(`${lines.length ? 'and earn' : 'earn'} ${needsText(short)} medals or better`);
+    lines.push(`(you have ${short.map((n) => `${n.have} ${n.name}`).join(', ')}: any level counts)`);
+  }
+  return lines;
+}
+
+/** Medals still missing for level `i` (see medalsShort), for the results panel. */
+export function medalsMissing(i) { return i < LEVELS.length ? medalsShort(LEVELS[i], bestTime) : []; }
 
 /** The furthest level you can play right now. */
 export function lastUnlocked() {

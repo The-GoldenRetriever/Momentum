@@ -1098,7 +1098,7 @@ export class Renderer {
     const py = Math.round(p.y + p.h - SPRITE_H - oy);
     ctx.drawImage(img, px, py);
 
-    if (p.dashes > 0) {                      // dash-ready glint on the belt
+    if (p.dashes > 0 && !p.dashLocked) {     // dash-ready glint on the belt
       ctx.fillStyle = p.t.dashCool > 0 ? '#5a7fae' : '#9cf6ff';
       ctx.fillRect(px + (dir ? 6 : 8), py + 12, 2, 1);
     }
@@ -1126,7 +1126,7 @@ export class Renderer {
     const s = this.scarf;
     if (!s) return;
     const { ctx } = this;
-    const hot = p.dashes > 0;
+    const hot = p.dashes > 0 && !p.dashLocked;
     for (let i = s.length - 1; i >= 1; i--) {
       const n = s[i];
       const w = Math.max(1, 4 - Math.floor(i / 2));

@@ -35,15 +35,19 @@ export function drawHud(ctx, game) {
   drawText(ctx, 'flow', x, y - 8, '#6f649c', 1);
   ctx.fillStyle = '#221c3a';
   ctx.fillRect(x, y, barW, 5);
-  // The bar runs the whole capacity, with a notch where the burst opens: what
-  // sits past the notch is fuel you are carrying, not speed you are running.
+  // The bar runs the whole capacity, with a notch at one bar (what sits past
+  // it is top gear) and the last stretch, where a wind-up starts, drawn as
+  // a darker cap: reach it with auto-burst on and the burst comes.
   const span = barW - 2;
   const f = Math.round((p.flow / P.FLOW_MAX) * span);
-  const gate = Math.round((P.BURST_FLOW_MIN / P.FLOW_MAX) * span);
-  ctx.fillStyle = p.flow >= P.BURST_FLOW_MIN ? '#9cf6ff' : p.flow > 0.5 ? '#63e0b0' : '#5b9adf';
+  const gate = Math.round((1 / P.FLOW_MAX) * span);
+  const arm = Math.round((P.BURST_ARM / P.FLOW_MAX) * span);
+  ctx.fillStyle = p.autoBurst ? '#2e2850' : '#1c1830';
+  ctx.fillRect(x + 1 + arm, y + 1, span - arm, 3);
+  ctx.fillStyle = p.flow >= 1 ? '#9cf6ff' : p.flow > 0.5 ? '#63e0b0' : '#5b9adf';
   ctx.fillRect(x + 1, y + 1, f, 3);
   if (f > gate) { ctx.fillStyle = '#dff3ff'; ctx.fillRect(x + 1 + gate, y + 1, f - gate, 3); }
-  ctx.fillStyle = p.flow >= P.BURST_FLOW_MIN ? '#0b0a14' : '#443a6e';
+  ctx.fillStyle = p.flow >= 1 ? '#0b0a14' : '#443a6e';
   ctx.fillRect(x + 1 + gate, y + 1, 1, 3);
   if (p.flow > P.FLOW_MAX - 0.02) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x + barW - 2, y, 2, 5); }
 
@@ -52,7 +56,7 @@ export function drawHud(ctx, game) {
   drawText(ctx, 'px/s', x + barW + 20, y - 1, '#564d80', 1);
 
   // ---- dash pips
-  for (let i = 0; i < p.maxDashes; i++) {
+  for (let i = 0; i < (p.dashLocked ? 0 : p.maxDashes); i++) {   // (no pip until you have a dash)
     const dx = x + i * 7, dy = y + 9;
     ctx.fillStyle = i < p.dashes ? '#9cf6ff' : '#2f2950';
     ctx.fillRect(dx, dy, 4, 4);
@@ -67,8 +71,9 @@ export function drawHud(ctx, game) {
     return code ? keyName(code).toLowerCase() : fallback;
   };
   const chips = [];
-  if (p.bursting || p.burstWind > 0) chips.push(['burst', '#9cf6ff']);
-  else if (p.canBurst) chips.push([`${key('burst', 'v')}: burst ready`, '#ffffff']);
+  if (p.bursting) chips.push(['burst', '#9cf6ff']);
+  else if (p.burstWind > 0) chips.push([`burst in ${Math.ceil(p.burstWind)}  ${key('autoburst', 'v')}: stop it`, '#ffffff']);
+  else if (!p.autoBurst) chips.push([`auto-burst off (${key('autoburst', 'v')})`, '#8a7fc0']);
   if (p.vault) chips.push([p.vault.kind === 'up' ? 'vault' : 'roll', '#ffe6a8']);
   else if (p.slopeRoll || p.rolling > 0) chips.push(['roll', '#ffe6a8']);
   else if (p.cue?.kind === 'up') chips.push([`${key('vault', 'c')}: vault`, '#ffd678']);
@@ -139,7 +144,7 @@ function drawDebug(ctx, game) {
     `flow ${p.flow.toFixed(2)}  top ${Math.round(p.topSpeed)}  dashes ${p.dashes}`,
     `coyote ${p.t.coyote.toFixed(2)} buffer ${p.t.buffer.toFixed(2)} super ${p.t.super.toFixed(2)}`,
     `cue ${p.cue ? `${p.cue.kind} ${Math.round(p.cue.rise)}px` : '-'}  vaults ${p.vaults}`,
-    `burst ${p.bursting ? 'on' : p.canBurst ? 'ready' : '-'}  x${game.timeScale.toFixed(2)}  used ${p.bursts}`,
+    `burst ${p.bursting ? 'on' : p.burstWind > 0 ? `wind ${p.burstWind.toFixed(1)}` : p.autoBurst ? 'auto' : 'off'}  x${game.timeScale.toFixed(2)}  used ${p.bursts}`,
     `fps ${game.fps.toFixed(0)}  parts ${game.fx.parts.length}`,
   ];
   panel(ctx, 6, 28, 190, rows.length * 8 + 8, 0.7);

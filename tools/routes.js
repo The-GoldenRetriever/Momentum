@@ -16,6 +16,7 @@ import { buildFurnace } from '../src/levels/furnace.js';
 import { buildTidewater } from '../src/levels/tidewater.js';
 import { buildStillness } from '../src/levels/stillness.js';
 import { buildGlacier } from '../src/levels/glacier.js';
+import { buildTutorial } from '../src/levels/tutorial.js';
 
 // A course that marks itself (L.marks: its flags, the edges its fang hops
 // leave from, and where each run-up ends) gets its route worked out from
@@ -33,7 +34,27 @@ function marked(build) {
   };
 }
 
+// The tutorial marks its own gates: a start at every flag, its tunnel and
+// shaft, and zones for the moves the bot is not doing anyway (the jump and
+// dash up the cliff, the dash off the burst, and V before the water; it rolls
+// down the slope already, tapping C at the prompt at the top). Its burst is
+// the game's own, so it runs with auto-burst on and the game's slow motion,
+// and the clock that makes its par is world time.
+function tutorial() {
+  const L = buildTutorial(), m = L.marks;
+  return {
+    starts: [{ x: L.spawn.x / TILE, y: L.spawn.y / TILE }, ...m.flags.map((f) => ({ x: f.x + 1, y: f.y - 1.1 }))],
+    zones: [...m.zones].sort((a, b) => a.at[0] - b.at[0]),
+    tunnels: m.tunnels,
+    shafts: m.shafts,
+    warp: true,
+    autoBurst: true,
+    limit: 100,
+  };
+}
+
 export const ROUTES = {
+  tutorial: tutorial(),
   spire: {
     starts: [{ x: 5, y: 32 }, { x: 48, y: 32.9 }, { x: 138, y: 32.9 }, { x: 228, y: 22.9 }, { x: 333, y: 32.9 }],
     tunnels: [[129, 136], [312, 317]],

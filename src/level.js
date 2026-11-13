@@ -55,6 +55,11 @@ export class Level {
     // it is not, so every floor query handles it without knowing who asks.
     this.skim = false;
     this.chase = null;   // the Stillness, on a level it follows you through
+    // px: west of these there is no dash, and no burst winds up. The tutorial
+    // hands each over at its own section, so nothing before that can be
+    // dashed past, and no burst goes off before you have been told about it.
+    this.dashFrom = 0;
+    this.burstFrom = 0;
     // Ice is a skin on rock, not a tile of its own: the cell stays SOLID for
     // every collision query, and only the feet (iceUnder) and the bake ask.
     this.icy = new Uint8Array(w * h);

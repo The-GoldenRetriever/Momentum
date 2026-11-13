@@ -1,5 +1,7 @@
-// test-area.js — one long playground. Every section isolates a mechanic, and
-// every section can be entered at full speed from the one before it.
+// test-area.js — level 2, "proving ground" (it was the test area, and the sim
+// checks still use it as their playground). Every section isolates a
+// mechanic, and every section can be entered at full speed from the one
+// before it.
 
 import { Level, T, TILE } from '../level.js';
 
@@ -146,14 +148,13 @@ export function buildTestArea() {
   L.ramp(264, GY - 4, 10, -1, H - 1);      // long drop-in ramp
   ground(274, 280, GY - 4);
   L.sign(275, GY - 5, 'BURST', [
-    'A full FLOW bar is worth one burst: press V.',
-    'You go well past a sprint, and the world — the',
-    'clock included — drops into slow motion, so there',
+    'Top the FLOW bar right up and the world slows: a',
+    'burst is winding up, and fires a few seconds later.',
+    'You go well past a sprint, in slow motion, so there',
     'is still time to read a ledge and call it.',
-    'Clipped something? It stays live a beat longer.',
     'DOWN in a burst still slides — the only way under',
     'the low rock at that speed. A dash outruns it.',
-    'The bar is the fuel gauge. Spend it well.',
+    'The bar is the fuel: V switches auto-burst off.',
   ]);
   L.stairs(280, GY - 1, 4, 2, -1, H - 1);  // rolling 1-tile steps down
   ground(288, 292);

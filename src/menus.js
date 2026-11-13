@@ -5,13 +5,13 @@
 
 import { drawText, textWidth } from './font.js';
 import { VIEW_W, VIEW_H, THEMES } from './render.js';
-import { LEVELS, medalFor, medalTimes } from './levels/index.js';
+import { LEVELS, MEDALS, medalFor, medalTimes, needsText } from './levels/index.js';
 import { T } from './level.js';
 import { fmtTime } from './hud.js';
 import { keyName } from './input.js';
 import { makeCanvas } from './art.js';
 import { sfx } from './audio.js';
-import { unlocked, lastUnlocked, bestTime } from './save.js';
+import { unlocked, lastUnlocked, bestTime, lockReason, medalsMissing } from './save.js';
 
 const INK = '#cbc4e6', DIM = '#6f649c', HOT = '#ffd678', COOL = '#9cf6ff', GOOD = '#7dffc4';
 
@@ -69,7 +69,7 @@ export class Menus {
   show(screen) {
     this.screen = screen;
     this.t = 0;
-    this.note = '';               // a line of feedback under the level list
+    this.note = false;            // a locked level was just picked: its reason turns pink
     if (screen === 'select') {
       // on the level you were on, or the furthest one you can reach
       this.sel = Math.min(this.game.levelIndex, lastUnlocked());
@@ -91,7 +91,7 @@ export class Menus {
       case 'title': return [['play', () => this.show('select')], ['controls', () => g.menu?.show()]];
       case 'select': return LEVELS.map((lv, i) => [lv.name, () => {
         if (unlocked(i)) { g.start(i); return; }
-        this.note = `beat ${LEVELS[i - 1].name} to open ${lv.name}`;
+        this.note = true;
         sfx.locked();
       }]);
       case 'pause': return [
@@ -104,7 +104,7 @@ export class Menus {
       ];
       case 'results': {
         const rows = [];
-        if (g.levelIndex + 1 < LEVELS.length) rows.push(['next level', () => g.nextLevel()]);
+        if (g.levelIndex + 1 < LEVELS.length && unlocked(g.levelIndex + 1)) rows.push(['next level', () => g.nextLevel()]);
         rows.push(['run it again', () => { this.close(); g.restart(); }]);
         rows.push(['level select', () => this.show('select')]);
         return rows;
@@ -124,6 +124,7 @@ export class Menus {
 
     if (up || down) {
       this.sel = (this.sel + (down ? 1 : -1) + rows.length) % rows.length;
+      this.note = false;
       sfx.menuMove();
     }
     if (pick && rows[this.sel]) { sfx.menuPick(); rows[this.sel][1](); return; }
@@ -137,7 +138,7 @@ export class Menus {
     }
     // shortcuts that already mean something during a run keep meaning it here
     if (this.screen === 'results') {
-      if (inp.hit('next') && this.game.levelIndex + 1 < LEVELS.length) this.game.nextLevel();
+      if (inp.hit('next') && this.game.levelIndex + 1 < LEVELS.length && unlocked(this.game.levelIndex + 1)) this.game.nextLevel();
       else if (inp.hit('restart')) { this.close(); this.game.restart(); }
     }
   }
@@ -175,7 +176,7 @@ export class Menus {
     ctx.fillStyle = 'rgba(8,6,15,0.72)';
     ctx.fillRect(0, VIEW_H - 34, VIEW_W, 34);
     const keys = (a, n = 1) => this.input.keysFor(a).slice(0, n).map(keyName).join('/') || '-';
-    const help = `${keys('jump')} jump   ${keys('dash')} dash   ${keys('vault')} ledges   ${keys('burst')} burst`;
+    const help = `${keys('jump')} jump   ${keys('dash')} dash   ${keys('vault')} ledges   ${keys('autoburst')} auto-burst`;
     centred(ctx, help, VIEW_H - 28, '#8a7fc0', 1);
     centred(ctx, 'up/down choose   jump or enter to pick   f fullscreen', VIEW_H - 18, '#5f5590', 1);
   }
@@ -208,6 +209,12 @@ export class Menus {
       if (!open) {                               // a level you have not earned yet
         drawText(ctx, lv.name, x + 20, ry + 4, on ? '#8a80b0' : '#4a4270', 1);
         drawText(ctx, 'locked', x + w - 12 - textWidth('locked', 1), ry + 4, '#4a4270', 1);
+        // and the medals it asks for, in the colour of the best kind asked
+        if (lv.needs) {
+          const asks = MEDALS.filter(([name]) => lv.needs[name]).map(([name, , colour]) => ({ name, colour, need: lv.needs[name] }));
+          const txt = `needs ${needsText(asks)}`;
+          drawText(ctx, txt, x + w - 52 - textWidth(txt, 1), ry + 4, on ? asks[0].colour : '#6a5f8e', 1);
+        }
         return;
       }
       drawText(ctx, lv.name, x + 20, ry + 4, on ? '#ffffff' : INK, 1);
@@ -223,7 +230,7 @@ export class Menus {
     const lv = LEVELS[this.sel];
     const by = y + LEVELS.length * rowH + 16;
     if (!unlocked(this.sel)) {
-      centred(ctx, this.note || `beat ${LEVELS[this.sel - 1].name} to open this one`, by + 4, this.note ? '#ff9ecd' : '#7a6fb5', 1);
+      lockReason(this.sel).forEach((line, i) => centred(ctx, line, by + 4 + i * 9, this.note ? '#ff9ecd' : '#7a6fb5', 1));
       centred(ctx, 'jump or enter: play   esc: back', VIEW_H - 12, '#564d80', 1);
       return;
     }
@@ -280,6 +287,9 @@ export class Menus {
       ['best', fmtTime(g.best), GOOD],
       ['deaths', String(g.player.deaths)],
       ...(next ? [[`${next.name} at`, fmtTime(next.time), next.colour]] : []),
+      // the next level shut behind medals: what it still wants
+      ...(g.levelIndex + 1 < LEVELS.length && medalsMissing(g.levelIndex + 1).length
+        ? [['next needs', needsText(medalsMissing(g.levelIndex + 1)), medalsMissing(g.levelIndex + 1)[0].colour]] : []),
     ]);
   }
 }

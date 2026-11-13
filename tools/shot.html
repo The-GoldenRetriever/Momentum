@@ -11,10 +11,17 @@ import { Game } from '../src/game.js';
 import { P } from '../src/player.js';
 import { buildArt } from '../src/art.js';
 import { Input } from '../src/input.js';
+import { migrateSave } from '../src/save.js';
 buildArt();
 const q = new URLSearchParams(location.search);
 const ctx = document.getElementById('game').getContext('2d', { alpha: false });
 ctx.imageSmoothingEnabled = false;
+// &best=<level id>:<seconds>,... stands in for saved best times (a fresh
+// profile has none), to see unlocks and medal gates on the level select
+if (q.has('best')) {
+  migrateSave();                 // (first, or the version check would wipe them)
+  for (const kv of q.get('best').split(',')) { const [id, t] = kv.split(':'); localStorage.setItem(`momentum.best.${id}`, t); }
+}
 const game = new Game(ctx, new Input(window));
 
 class Keys {
@@ -35,7 +42,9 @@ class Keys {
 const keys = new Keys();
 const held = (q.get('keys') || '').split(',').filter(Boolean);
 const steps = Number(q.get('steps') || 120);
-const auto = q.get('auto');          // 'vault' calls every ledge; 'burst' also bursts
+const auto = q.get('auto');          // 'vault' calls every ledge; 'burst' also leaves auto-burst on
+// (off otherwise, so a frame with a full bar is the frame asked for, not a wind-up)
+game.player.autoBurst = game.autoBurst = auto === 'burst';
 if (q.has('at')) game.player.reset(Number(q.get('at')) * 16, Number(q.get('ay') || 0) * 16);
 if (q.has('vx')) game.player.vx = Number(q.get('vx'));
 if (q.has('flow')) game.player.flow = Number(q.get('flow'));
@@ -46,13 +55,12 @@ for (let i = 0; i < steps; i++) {
     ? (a === 'right' ? 'left' : 'right') : a));
   if (duck && i >= duck) k.push('down');
   if (auto && (game.player.cue || game.player.t.refund > 0)) k.push('vault');
-  if (auto === 'burst' && game.player.canBurst) k.push('burst');
   keys.set(k);
   game.update(1 / 120, keys);
   keys.step();
   if (q.has('flow') && !game.player.bursting) game.player.flow = Number(q.get('flow'));
 }
-game.timeScale = game.player.timeWarped ? P.BURST_SCALE : 1;
+game.timeScale = game.player.warp;
 if (game.player.timeWarped) for (let i = 0; i < 30; i++) game.renderer.zoom += (1.25 - game.renderer.zoom) * 0.4;
 game.cam.follow(game.player, 0.5);
 // &next=<steps> finishes the level after the run, picks "next level" and

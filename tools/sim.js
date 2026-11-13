@@ -9,7 +9,8 @@ import { updateMechanics, resetMechanics, phaseState, M } from '../src/mechanics
 import { buildSpire } from '../src/levels/spire.js';
 import { buildUndercroft } from '../src/levels/undercroft.js';
 import { buildSkyline } from '../src/levels/skyline.js';
-import { LEVELS, medalTimes } from '../src/levels/index.js';
+import { buildTutorial } from '../src/levels/tutorial.js';
+import { LEVELS, MEDALS, medalTimes, medalTally, medalsShort } from '../src/levels/index.js';
 import { makeSim, flatOut } from './harness.js';
 import { ROUTES } from './routes.js';
 
@@ -280,35 +281,63 @@ function ledgeRun(mode) {
   check('a single tap does not', tapStarts <= 1, `${tapStarts} rolls from one tap`);
 }
 
-// The press arms the burst and the world slows; it fires a beat later. Every
-// burst test has to sit through that beat, so it gets a name.
-const WIND = Math.ceil(P.BURST_WIND * 120);   // steps from the press to the launch
+// There is no burst key: sprint the bar up to BURST_ARM and a burst winds up
+// by itself (slow motion, the last of the bar crawling in), then fires WIND
+// steps later unless V switches it off. The harness has no slow motion of its
+// own (every step is a step of world time), so wind-ups want a lot of floor.
+const WIND = Math.ceil(P.BURST_WIND * 120);   // steps from the wind-up starting to the launch
+// Most burst checks are about the burst, not the wind-up before it: they
+// start one straight away, at the moment they need it.
+const cash = (sim, keys = ['right']) => { sim.p.startBurst(); sim.run(1, keys); };
+const runway = () => new Level(600, 30).rect(0, 20, 600, 10);
 
-// 17. the burst: full bar only, silly speed, drains, and ends itself
+// 17. the burst: a bar run right up to the top fires one by itself, after a
+//     wind-up V can stand down; silly speed, drains, and ends itself
 {
-  const half = makeSim({ x: 151, y: 26 });
-  half.p.flow = 0.5;
-  half.run(60, ['right']);
-  const couldHalf = half.p.canBurst;
-  half.run(20, ['right', 'burst']);
-  check('a half-full bar cannot burst', !couldHalf && !half.p.bursting);
-
-  const sim = makeSim({ x: 151, y: 26 });
-  sim.p.flow = 1;
-  sim.run(60, ['right']);
+  const sim = makeSim({ x: 6, y: 19 }, runway());
+  sim.p.autoBurst = true;
+  sim.p.flow = P.BURST_ARM - 0.01;
+  sim.run(80, ['right'], (i, pl) => { pl.flow = Math.min(pl.flow, P.BURST_ARM - 0.01); });
+  const quiet = !sim.p.timeWarped && !sim.p.bursting;
   const sprint = Math.abs(sim.p.vx);
-  sim.run(1, ['right', 'burst']);
-  // the whole point of the beat: the world is already warped, you are not gone yet
-  check('the press warps time before it fires you',
-    sim.p.timeWarped && !sim.p.bursting && Math.abs(Math.abs(sim.p.vx) - sprint) < 12,
-    `wind ${(sim.p.burstWind * 1000).toFixed(0)}ms, still at ${Math.abs(sim.p.vx).toFixed(0)} px/s`);
-  sim.run(WIND - 2, ['right']);
-  check('and it is still only winding up one step short of it', !sim.p.bursting,
-    `wind ${(sim.p.burstWind * 1000).toFixed(0)}ms`);
-  sim.run(2, ['right']);
-  check('a full bar bursts', sim.p.bursting, `flow ${sim.p.flow.toFixed(2)}`);
-  check('and it is well past a sprint', Math.abs(sim.p.vx) > sprint * 1.5,
+  let woundAt = -1, f0 = 0, f1 = 0, warpAt = 1, vxAt = 0, firedAt = -1, flowAtFire = 0;
+  sim.run(WIND + 60, ['right'], (i, pl) => {
+    if (woundAt < 0 && pl.burstWind > 0) { woundAt = i; f0 = pl.flow; warpAt = pl.warp; vxAt = Math.abs(pl.vx); }
+    if (woundAt >= 0 && i === woundAt + 120) f1 = pl.flow;
+    if (firedAt < 0 && pl.bursting) { firedAt = i; flowAtFire = pl.flow; }
+  });
+  check('a sprint short of the top of the bar never winds up', quiet, `flow ${(P.BURST_ARM - 0.01).toFixed(2)}`);
+  check('a sprint up to it winds a burst up by itself', woundAt >= 0 && woundAt < 10, `after ${woundAt} steps`);
+  check('the wind-up slows the world, and does not fire you yet',
+    warpAt === P.WIND_SCALE && Math.abs(vxAt - sprint) < 12, `x${warpAt} at ${vxAt.toFixed(0)} px/s`);
+  // in the game that second of real time is WIND_SCALE of world time, which
+  // the plain fill would have spent gaining FLOW_GAIN * WIND_SCALE
+  check('and the last of the bar crawls in', f1 > f0 && f1 - f0 < P.FLOW_GAIN * P.WIND_SCALE * 0.5,
+    `${(f1 - f0).toFixed(3)} bar per real second, against ${(P.FLOW_GAIN * P.WIND_SCALE).toFixed(2)} unwound`);
+  check('it fires by itself at the end of the wind-up, on a topped-up bar',
+    Math.abs(firedAt - woundAt - WIND) <= 1 && flowAtFire > P.FLOW_MAX - 0.02,
+    `${firedAt - woundAt} steps (wind ${WIND}), bar ${flowAtFire.toFixed(2)}`);
+  check('and it is well past top gear', Math.abs(sim.p.vx) > sprint * 1.35,
     `${sprint.toFixed(0)} -> ${Math.abs(sim.p.vx).toFixed(0)} px/s`);
+
+  // V: stand it down mid-wind-up and you run on in top gear, bar full
+  const stop = makeSim({ x: 6, y: 19 }, runway());
+  stop.p.autoBurst = true;
+  stop.p.flow = P.FLOW_MAX;
+  stop.run(60, ['right']);
+  const winding = stop.p.burstWind > 0;
+  stop.run(1, ['right', 'autoburst']);
+  const snapped = !stop.p.autoBurst && !stop.p.timeWarped && stop.p.warp === 1;
+  let again = false;
+  stop.run(WIND * 2, ['right'], (i, pl) => { if (pl.timeWarped) again = true; });
+  check('V stands a wind-up down: the world snaps straight back', winding && snapped,
+    `winding ${winding}, then auto ${stop.p.autoBurst} x${stop.p.warp}`);
+  check('and with auto-burst off a topped-up bar stays topped up, in top gear',
+    !again && stop.p.flow > P.FLOW_MAX - 0.01 && Math.abs(stop.p.vx) > 400,
+    `bar ${stop.p.flow.toFixed(2)} at ${Math.abs(stop.p.vx).toFixed(0)} px/s, warped again: ${again}`);
+  stop.run(1, ['right', 'autoburst']);
+  stop.run(2, ['right']);
+  check('V again, and it winds straight back up', stop.p.autoBurst && stop.p.burstWind > 0);
 
   // a dash is the one thing that outruns a burst, and only inside one
   // (on open ground of its own: at 1000 px/s the test area runs out fast)
@@ -316,8 +345,7 @@ const WIND = Math.ceil(P.BURST_WIND * 120);   // steps from the press to the lau
   const open = makeSim({ x: 6, y: 19 }, new Level(200, 30).rect(0, 20, 200, 10));
   open.p.flow = 1;
   open.run(80, ['right']);
-  open.run(1, ['right', 'burst']);
-  open.run(WIND, ['right']);
+  cash(open, ['right']);
   open.run(1, ['right', 'dash']);
   open.run(Math.ceil(P.DASH_TIME * 120) + 4, ['right'], (i, pl) => { if (pl.dashing) burstDash = Math.max(burstDash, Math.abs(pl.vx)); });
   const calm = makeSim({ x: 151, y: 26 });
@@ -338,8 +366,7 @@ const WIND = Math.ceil(P.BURST_WIND * 120);   // steps from the press to the lau
   fuel.p.flow = 1;
   fuel.run(60, ['right']);
   fuel.p.flow = 1;
-  fuel.run(4, ['right', 'burst']);
-  fuel.run(WIND, ['right']);
+  cash(fuel, ['right']);
   const at0 = fuel.p.flow;
   fuel.run(30, ['right']);
   const drained = (at0 - fuel.p.flow) / 0.25;
@@ -355,8 +382,7 @@ const WIND = Math.ceil(P.BURST_WIND * 120);   // steps from the press to the lau
   const back = makeSim({ x: 151, y: 26 });
   back.p.flow = 1;
   back.run(60, ['right']);
-  back.run(4, ['right', 'burst']);
-  back.run(WIND, ['right']);
+  cash(back, ['right']);
   back.run(6, ['left']);
   check('turning back drops it', !back.p.bursting);
 }
@@ -367,8 +393,7 @@ const WIND = Math.ceil(P.BURST_WIND * 120);   // steps from the press to the lau
   sim.p.flow = 1;
   let cueSteps = 0, vaulted = false;
   sim.run(30, ['right']);
-  sim.run(6, ['right', 'burst']);
-  sim.run(WIND, ['right']);
+  cash(sim, ['right']);
   sim.run(120, () => (sim.p.cue ? ['right', 'vault'] : ['right']), (i, pl) => {
     if (pl.cue) cueSteps++;
     if (pl.vault) vaulted = true;
@@ -379,36 +404,31 @@ const WIND = Math.ceil(P.BURST_WIND * 120);   // steps from the press to the lau
   check('and to take it', vaulted);
 }
 
-// 19. the burst stays cashable for a moment after you drop off top speed
+// 19. a wind-up survives being clipped: dropping off the sprint for a moment
+//     does not throw it away, staying off it does, and a spent bar does not
+//     wind straight back up
 {
-  const sim = makeSim({ x: 151, y: 26 });
-  sim.p.flow = 1;
+  const sim = makeSim({ x: 6, y: 19 }, runway());
+  sim.p.autoBurst = true;
+  sim.p.flow = P.FLOW_MAX;
   sim.run(60, ['right']);
-  check('a full-bar sprint is cashable', sim.p.canBurst);
-
+  const wound = sim.p.burstWind > 0;
   sim.p.vx = 40;                               // clipped something, speed gone
   sim.run(1, ['right']);
-  check('and still is right after losing the speed', sim.p.canBurst,
+  check('a clip mid-wind-up does not stand it down', wound && sim.p.burstWind > 0,
     `vx=${sim.p.vx.toFixed(0)} window=${sim.p.t.burstReady.toFixed(2)}s`);
-  sim.run(50, []);                             // ... but not forever
-  check('the window closes', !sim.p.canBurst, `window=${sim.p.t.burstReady.toFixed(2)}s`);
+  sim.run(50, []);                             // ... but stopping does
+  check('staying off the sprint does', sim.p.burstWind <= 0 && !sim.p.bursting,
+    `window=${sim.p.t.burstReady.toFixed(2)}s`);
 
-  const late = makeSim({ x: 151, y: 26 });     // and it really does fire in there
-  late.p.flow = 1;
-  late.run(60, ['right']);
-  late.p.vx = 40;
-  late.run(1, ['right', 'burst']);
-  late.run(WIND, ['right']);           // (no further: any more and burst speed is in the pit)
-  check('a late press still spends it', late.p.bursting,
-    `vx=${late.p.vx.toFixed(0)} from a standstill-ish 40`);
-
-  const spent = makeSim({ x: 151, y: 26 });    // spending it must not leave a window open
+  const spent = makeSim({ x: 6, y: 19 }, runway());
+  spent.p.autoBurst = true;
   spent.p.flow = 1;
   spent.run(60, ['right']);
-  spent.run(4, ['right', 'burst']);
-  spent.p.flow = 0;
+  cash(spent);
+  spent.p.flow = 0;                            // run dry
   spent.run(4, ['right']);
-  check('an emptied bar cannot immediately re-burst', !spent.p.bursting && !spent.p.canBurst,
+  check('a burst run dry does not wind straight back up', !spent.p.bursting && spent.p.burstWind <= 0 && !spent.p.canBurst,
     `flow=${spent.p.flow.toFixed(2)} window=${spent.p.t.burstReady.toFixed(2)}s`);
 }
 
@@ -505,8 +525,7 @@ function feetFirst() {
   const sim = makeSim({ x: 198, y: 26 });       // the flat run-in to the tunnel
   sim.p.flow = 1;
   sim.run(60, ['right']);
-  sim.run(1, ['right', 'burst']);
-  sim.run(WIND, ['right']);
+  cash(sim, ['right']);
   const up = sim.p.bursting;
   sim.run(6, ['right', 'down']);
   check('ducking inside a burst keeps the burst', up && sim.p.bursting && sim.p.sliding,
@@ -532,8 +551,7 @@ function feetFirst() {
   out.run(60, ['right']);
   out.run(10, ['right', 'down']);
   const slid = out.p.sliding;
-  out.run(1, ['right', 'down', 'burst']);
-  out.run(WIND, ['right', 'down']);
+  cash(out, ['right', 'down']);
   check('cashing a burst out of a slide keeps the slide', slid && out.p.bursting && out.p.sliding,
     `sliding=${out.p.sliding} h=${out.p.h}`);
   out.run(20, ['right']);
@@ -554,8 +572,7 @@ function feetFirst() {
     const sim = makeSim({ x: 6, y: 19 }, level);
     sim.p.flow = 1;
     sim.run(80, ['right']);
-    sim.run(1, ['right', 'burst']);
-    sim.run(WIND, ['right']);
+    cash(sim, ['right']);
     return sim;
   };
 
@@ -640,8 +657,7 @@ function feetFirst() {
     const t = makeSim({ x: 6, y: 19 }, plain());
     t.p.flow = flow;
     t.run(200, ['right'], () => { t.p.flow = flow; });   // held there while it winds up
-    t.run(1, ['right', 'burst']);
-    t.run(WIND, ['right']);
+    cash(t, ['right']);
     let steps = 0;
     t.run(1200, ['right'], (i, pl) => { if (pl.bursting) steps++; });
     return steps / 120;
@@ -835,7 +851,7 @@ function feetFirst() {
     const sim = makeSim({ x: 36, y: 29 });        // the run-in to the five steps up
     sim.p.flow = 1;
     sim.run(30, ['right']);
-    if (burst) { sim.run(1, ['right', 'burst']); sim.run(WIND, ['right']); }
+    if (burst) { cash(sim, ['right']); }
     let fresh = false, clip = 0, slowest = Infinity, vaults = null;
     sim.run(300, () => {
       const k = ['right'];
@@ -877,7 +893,7 @@ function feetFirst() {
   const tumble = (level, at, x0, x1, how, burst = false) => {
     const sim = makeSim(at, level);
     sim.p.flow = 1;
-    if (burst) { sim.run(30, ['right']); sim.run(1, ['right', 'burst']); sim.run(WIND, ['right']); }
+    if (burst) { sim.run(30, ['right']); cash(sim, ['right']); }
     let air = 0, high = 0, fresh = false;
     sim.run(600, () => {
       const k = ['right'];
@@ -958,9 +974,13 @@ function feetFirst() {
     });
     for (const move of moves) {
       const z = zones[move[0]];
+      // (a vault zone only stops the bot jumping where an edge comes before
+      //  the prompt; where the prompt comes first it vaults anyway, so these
+      //  are proved by taking C away instead: see check 40)
+      if (z.vault) continue;
       const from = [...starts].reverse().find((f) => f.x < z.at[0]);
       const r = flatOut(build, from, 0, { ...route, zones: zones.filter((_, j) => !move.includes(j)) });
-      const what = z.hop ? 'hop' : z.jump ? 'jump' : z.slide ? 'slide' : move.length > 1 ? 'dashes' : 'dash';
+      const what = z.hop ? 'hop' : z.jump ? 'jump' : z.slide ? 'slide' : z.roll ? 'slope roll' : z.autoburst ? 'V (auto-burst off)' : move.length > 1 ? 'dashes' : 'dash';
       check(`${name}: the ${what} at tile ${z.at[0]} ${move.length > 1 ? 'are' : 'is'} needed`,
         !r.reached, `without: ${r.reached ? 'still made it' : `stopped at tile ${r.at}`}`);
       // a crystal chain marked `exact` needs every link: one dash short fails
@@ -1144,9 +1164,9 @@ function feetFirst() {
 }
 
 // 37. a slope is the place to go faster than you can run: running down one
-//     gives a little, and a roll (C, tapped or held) runs away down it, well
-//     past top gear, without leaving the slope, and you keep the speed off
-//     the bottom for a while.
+//     gives a little, and a roll (C, tapped or held) gives more, past top
+//     gear (not far past it: it was asked to come down twice), without
+//     leaving the slope, and you keep the speed off the bottom for a while.
 {
   const ramp = () => new Level(400, 80).rect(0, 20, 60, 60).ramp(60, 35, 16, -1, 79).rect(76, 36, 324, 44);
   const down = (mode) => {
@@ -1170,10 +1190,10 @@ function feetFirst() {
   const run = down('run'), tap = down('tap'), hold = down('hold');
   check('running down a slope gives a little speed', run.bottom > 430,
     `${run.bottom.toFixed(0)} px/s at the bottom of a 16-tile slope from 410`);
-  check('a roll down it gives more', tap.bottom > run.bottom * 1.1 && hold.bottom > run.bottom * 1.1,
+  check('a roll down it gives more', tap.bottom > run.bottom * 1.05 && hold.bottom > run.bottom * 1.05,
     `tapped ${tap.bottom.toFixed(0)}, held ${hold.bottom.toFixed(0)} px/s against ${run.bottom.toFixed(0)} running`);
   check('and never leaves the slope doing it', tap.air === 0 && hold.air === 0, `${tap.air + hold.air} steps airborne`);
-  check('and the speed carries on off the bottom', tap.after > run.after + 50,
+  check('and the speed carries on off the bottom', tap.after > run.after + 25,
     `ten tiles on: ${tap.after.toFixed(0)} rolled, ${run.after.toFixed(0)} run`);
 }
 
@@ -1244,6 +1264,132 @@ function feetFirst() {
   wade.run(800, ['right'], (i, p) => { if (!p.dead) p.flow = Math.min(p.flow, 0.4); if (p.sinking) waded = true; });
   check('wading into a reef is the spikes, not a way through them',
     waded && wade.p.dead && wade.p.deathCause !== 'water', `died: ${wade.p.deathCause ?? 'spikes'} at tile ${(wade.p.cx / TILE).toFixed(1)}`);
+}
+
+// 40. the tutorial: every gate needs its move. (Check 32 runs it flat out
+//     from every flag and proves its zones: the jump and dash up the cliff,
+//     the dash off the burst, and V before the water.) Here:
+//     the moves the bot makes everywhere, taken away one at a time, and the
+//     ways round a gate a player might try instead.
+{
+  const route = ROUTES.tutorial, S = buildTutorial().marks.sections;
+  const spawn = route.starts[0];
+  const shaftTop = route.starts.find((f) => f.x > S.shaft && f.x < S.roll);
+  const cliffTop = route.starts.find((f) => f.x > S.dash && f.x < S.burstGap);
+  const fails = (from, opts, before) => {
+    const r = flatOut(buildTutorial, from, 0, { ...route, ...opts });
+    return { ok: !r.reached && Number(r.at) < before, at: r.at };
+  };
+  const noC = fails(spawn, { noVault: true }, S.slide);
+  check('tutorial: the ledges need C (no vault, and the run dies at them)', noC.ok, `stopped at tile ${noC.at}`);
+  const noSlide = fails(spawn, { tunnels: [] }, S.shaft);
+  check('tutorial: the tunnel needs a slide', noSlide.ok, `stopped at tile ${noSlide.at}`);
+  const noKick = fails(spawn, { shafts: [] }, S.roll);
+  check('tutorial: the shaft needs wall jumps', noKick.ok, `stopped at tile ${noKick.at}`);
+  // (the bot rolls the slope with the C it taps at the prompt at the top)
+  const noRoll = fails(shaftTop, { noVault: true }, S.dash);
+  check('tutorial: the gap off the slope needs a roll (running it falls short)', noRoll.ok, `stopped at tile ${noRoll.at}`);
+  const noBurst = fails(cliffTop, { autoBurst: false }, S.water);
+  check('tutorial: the chasm needs a burst (auto-burst off, the run falls in)', noBurst.ok, `stopped at tile ${noBurst.at}`);
+
+  // a jump up the first vault step, from anywhere on the floor before its
+  // gap, at any speed, held for any time: a full one goes into the spikes on
+  // the roof, and only a hop cut to a narrow band of height lands on the lip
+  // (each step: its gap at S.vault + 8i, from a floor on row 38 - 2i)
+  const jumpUp = (step, flow, at, holdFor) => {
+    const gap = S.vault + 8 * step, row = 38 - 2 * step;
+    const sim = makeSim({ x: gap - 5.5, y: row - 1 }, buildTutorial());
+    sim.p.flow = flow;
+    sim.p.vx = 200 + 140 * Math.min(1, flow);
+    let t0 = -1, up = false;
+    sim.run(120, (i) => {
+      const x = sim.p.cx / TILE;
+      if (t0 < 0 && x > at) t0 = i;
+      return t0 >= 0 && i - t0 < holdFor ? ['right', 'jump'] : ['right'];
+    }, (i, pl) => { if (!pl.dead && pl.grounded && pl.footY / TILE < row - 1.99 && pl.cx / TILE > gap + 2) up = true; });
+    return up;
+  };
+  let full = 0, hops = 0, tries = 0;
+  for (let step = 0; step < 3; step++) {
+    for (const flow of [0.4, 1, 1.6]) {
+      for (let at = S.vault + 8 * step - 4; at < S.vault + 8 * step - 0.3; at += 0.25) {
+        tries++;
+        if (jumpUp(step, flow, at, 40)) full++;
+        for (let h = 1; h < 30; h++) if (jumpUp(step, flow, at, h)) { hops++; break; }
+      }
+    }
+  }
+  // (A hop cut short can still land: a jump reaches any height a vault
+  //  climbs to, so the roof's points can only sit just over the vault's.)
+  check('tutorial: no full jump gets up the vault steps', full === 0,
+    `${full} of ${tries} made it; a hop cut short lands from ${hops} of those take-off points`);
+
+  // creeping into the tunnel ducked, too slow to slide, drops you in a gap
+  const creep = makeSim({ x: S.slide - 6, y: 31 }, buildTutorial());
+  creep.run(900, () => ['right', 'down'], (i, pl) => { pl.vx = Math.min(pl.vx, 90); });
+  check('tutorial: a crouch through the tunnel drops into its gaps', creep.p.dead || creep.p.cx / TILE < S.slide + 6,
+    `dead=${creep.p.dead} at tile ${(creep.p.cx / TILE).toFixed(1)}`);
+
+  // the dash and the burst are handed over at their own sections, and not before
+  const early = makeSim({ x: S.slide - 10, y: 31 }, buildTutorial());
+  early.p.autoBurst = true;
+  early.p.flow = P.FLOW_MAX;
+  let dashed = false, warped = false;
+  early.run(120, (i) => (i === 40 ? ['right', 'dash'] : ['right']), (i, pl) => { if (pl.dashing) dashed = true; if (pl.timeWarped) warped = true; });
+  check('tutorial: no dash and no burst before their sections', !dashed && !warped, `dashed ${dashed}, wound up ${warped}`);
+  const later = makeSim({ x: S.burst + 2, y: 22 }, buildTutorial());
+  later.p.autoBurst = true;
+  later.p.flow = P.FLOW_MAX;
+  dashed = false; warped = false;
+  later.run(120, (i) => (i === 40 ? ['right', 'dash'] : ['right']), (i, pl) => { if (pl.dashing) dashed = true; if (pl.timeWarped) warped = true; });
+  check('tutorial: both are yours by the burst section', dashed && warped, `dashed ${dashed}, wound up ${warped}`);
+}
+
+// 41. the medal gates: a level's `needs` names real medals, can always be met
+//     from the levels before it, and a better medal counts towards a lesser
+{
+  const kinds = MEDALS.map(([name]) => name);
+  const bad = [];
+  LEVELS.forEach((lv, i) => {
+    if (!lv.needs) return;
+    for (const [k, n] of Object.entries(lv.needs)) if (!kinds.includes(k) || !(n > 0)) bad.push(`${lv.id}: ${k} ${n}`);
+    // gold on every level before it (and nothing after) has to be enough
+    const before = (l) => (LEVELS.indexOf(l) < i ? medalTimes(l)[0].time : 0);
+    if (medalsShort(lv, before).length) bad.push(`${lv.id}: asks for more than the ${i} levels before it can give`);
+  });
+  check('every medal gate asks for real medals, and the levels before it can pay', bad.length === 0,
+    bad.length ? bad.join('; ') : `${LEVELS.filter((l) => l.needs).length} gated levels`);
+  const oneGold = (l) => (l === LEVELS[0] ? medalTimes(l)[0].time : 0);
+  const t = medalTally(oneGold);
+  check('a gold counts as a silver and a bronze too', t.gold === 1 && t.silver === 1 && t.bronze === 1, JSON.stringify(t));
+  const none = LEVELS.filter((l) => l.needs && medalsShort(l, () => 0).length === 0);
+  check('and with no medals, every gate is shut', none.length === 0, none.map((l) => l.id).join(', ') || 'all shut');
+}
+
+// 42. a slide-dash (a dash out of a slide: a wavedash) fills the bar no more
+//     than a plain dash does, and the extra speed it hands you, slid on, bleeds
+//     away faster than a slide's own friction would take it
+{
+  const flat = () => new Level(400, 30).rect(0, 20, 400, 10);
+  const dashFrom = (slide, holdDown) => {
+    const sim = makeSim({ x: 10, y: 19 }, flat());
+    sim.run(80, ['right']);
+    sim.p.flow = 0.6;
+    let bar = 0, waved = false, at = null;
+    sim.run(200, (i) => {
+      if (!slide) return i === 6 ? ['right', 'dash'] : ['right'];
+      return i < 6 ? ['right', 'down'] : i === 6 ? ['right', 'down', 'dash'] : holdDown ? ['right', 'down'] : ['right'];
+    }, (i, p) => { if (i === 36) bar = p.flow; if (p.waveRun) waved = true; if (i === 126) at = Math.abs(p.vx); });
+    return { bar, waved, at };
+  };
+  const plain = dashFrom(false), wave = dashFrom(true, false), slid = dashFrom(true, true);
+  check('a slide-dash fills the bar no more than a dash', wave.waved && Math.abs(wave.bar - plain.bar) < 0.005,
+    `bar ${wave.bar.toFixed(3)} after a slide-dash, ${plain.bar.toFixed(3)} after a dash`);
+  // slid on for a second from WAVEDASH_X: a slide's own friction (held forward)
+  // takes 60 of it; the bleed takes WAVEDASH_BLEED more
+  const slideOnly = P.WAVEDASH_X - P.SLIDE_FRICTION * 0.4;
+  check('and its speed, slid on, lasts less than a slide alone would keep it', slid.at < slideOnly - P.WAVEDASH_BLEED * 0.8,
+    `${slid.at.toFixed(0)} px/s a second on, against ${slideOnly} on friction alone`);
 }
 
 print(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURE(S)`);

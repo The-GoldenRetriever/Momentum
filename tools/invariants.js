@@ -11,7 +11,7 @@ import { LEVELS } from '../src/levels/index.js';
 import { updateMechanics } from '../src/mechanics.js';
 import { P } from '../src/player.js';
 
-const ACTIONS = ['left', 'right', 'up', 'down', 'jump', 'dash', 'vault', 'burst'];
+const ACTIONS = ['left', 'right', 'up', 'down', 'jump', 'dash', 'vault', 'autoburst'];
 let rng = 1;
 const rand = () => ((rng = (rng * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
 const bad = new Map();
@@ -32,6 +32,7 @@ for (const lv of LEVELS) {
     if (sim.level.boxHitsWall(sim.p.x, sim.p.y, sim.p.w, sim.p.h)) continue;
     sim.p.vx = (rand() * 2 - 1) * 450;
     sim.p.flow = rand() * 1.6;
+    sim.p.autoBurst = true;            // (and the random V presses flip it)
     let held = [], dry = 0, sunkFor = 0, spiky = 0, pullFor = 0, wet = 0, wasS = false, wasPull = false;
     for (let i = 0; i < 1500; i++) {
       if (i % 10 === 0) { held = ACTIONS.filter(() => rand() < 0.3); if (rand() < 0.5) held.push('right'); }

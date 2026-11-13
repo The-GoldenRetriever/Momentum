@@ -13,7 +13,7 @@ import { Menus } from './menus.js';
 import { sfx } from './audio.js';
 import { WALK_SPEED, WALK_MAX, OFF_EDGE, FADE_TIME, LOAD_TIME, drawLetterbox, drawFade, drawLoading } from './cutscene.js';
 
-import { store, LAST_KEY, migrateSave, bestTime, setBest, lastUnlocked } from './save.js';
+import { store, LAST_KEY, AUTO_KEY, migrateSave, bestTime, setBest, lastUnlocked, unlocked } from './save.js';
 
 const RESULTS_DELAY = 0.8;        // let the goal burst play before the panel covers it
 
@@ -43,6 +43,9 @@ export class Game {
     // drops you straight into a section of it — handy for testing
     // (an old save has its times wiped, once: see save.js)
     migrateSave();
+    // V's switch outlives the player it is flipped on: every level builds a
+    // fresh one, which is handed this (see load), and it is saved as it changes
+    this.autoBurst = store.get(AUTO_KEY) !== 'off';
     const q = new URLSearchParams(location.search);
     // The menus open on the last level you started, if it is still open to
     // you. ?level= is for testing, and goes anywhere.
@@ -73,10 +76,10 @@ export class Game {
 
   /** From the results panel: walk off, load behind a black screen, go. */
   nextLevel() {
-    if (this.levelIndex + 1 >= LEVELS.length) return;
+    // (a level shut behind medals is not offered: see Menus' results rows)
+    if (this.levelIndex + 1 >= LEVELS.length || !unlocked(this.levelIndex + 1)) return;
     this.ui.close();
-    this.player.bursting = false;      // no slow motion through the walk-off
-    this.player.burstWind = 0;
+    this.player.standDown();           // no slow motion through the walk-off
     this.level.exitOpen = true;        // through the end wall and off screen
     // `out` counts up from the moment they are past the edge: the fade
     this.cutscene = { phase: 'walk', t: 0, out: null, next: this.levelIndex + 1 };
@@ -112,8 +115,7 @@ export class Game {
   toTitle() {
     this.playing = false;
     // a burst left running would keep the title zoomed in and in slow motion
-    this.player.bursting = false;
-    this.player.burstWind = 0;
+    this.player.standDown();
     this.ui.show('title');
     this.#attractCam(true);
   }
@@ -132,6 +134,7 @@ export class Game {
     this.fx.parts.length = 0;
     this.fx.lines.length = 0;
     this.player = new Player(this.level, this.fx);
+    this.player.autoBurst = this.autoBurst;
     this.cam = new Camera(VIEW_W, VIEW_H, this.level);
     this.renderer = new Renderer(this.ctx, this.level);
     this.cam.snapTo(this.player.cx, this.player.cy);
@@ -199,7 +202,13 @@ export class Game {
 
     // Once the run is over the player coasts to a stop under the panel.
     p.update(dt, ui === 'results' ? IDLE : input, realDt);
+    if (this.finished) p.standDown();            // (see Player.standDown)
     updateMechanics(this.level, p, dt);
+    if (p.autoBurst !== this.autoBurst) {        // V, this step
+      this.autoBurst = p.autoBurst;
+      store.set(AUTO_KEY, p.autoBurst ? 'on' : 'off');
+      this.#say(p.autoBurst ? 'AUTO-BURST ON' : 'AUTO-BURST OFF', '', 1.1);
+    }
 
     if (p.dead && p.deadTimer <= 0) this.respawn();
 
