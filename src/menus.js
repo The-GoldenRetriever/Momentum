@@ -1,5 +1,5 @@
-// menus.js — the screens around a run: title, level select, pause and the
-// results panel. They are drawn straight onto the game canvas in the bitmap
+// menus.js — the screens around a run: title, level select, pause, the
+// results panel, and the leaderboards (signing one, and reading them). They are drawn straight onto the game canvas in the bitmap
 // font, over the live world (the title and level select pan slowly across a
 // level with nobody in it).
 
@@ -11,7 +11,7 @@ import { fmtTime } from './hud.js';
 import { keyName } from './input.js';
 import { makeCanvas } from './art.js';
 import { sfx } from './audio.js';
-import { unlocked, lastUnlocked, bestTime, lockReason, medalsMissing } from './save.js';
+import { unlocked, lastUnlocked, bestTime, lockReason, medalsMissing, board, boardRank, addToBoard, lastInitials, BOARD_SIZE } from './save.js';
 
 const INK = '#cbc4e6', DIM = '#6f649c', HOT = '#ffd678', COOL = '#9cf6ff', GOOD = '#7dffc4';
 
@@ -24,6 +24,9 @@ function panel(ctx, x, y, w, h, alpha = 0.9) {
   ctx.fillRect(x, y, 1, h);
   ctx.fillRect(x + w - 1, y, 1, h);
 }
+
+// 1st, 2nd, 3rd ... (the font has no '#')
+const nth = (n) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
 
 const centred = (ctx, str, y, col, scale = 1, shadow = null) =>
   drawText(ctx, str, Math.round((VIEW_W - textWidth(str, scale) + scale) / 2), y, col, scale, shadow);
@@ -58,7 +61,7 @@ export class Menus {
   constructor(game, input) {
     this.game = game;
     this.input = input;
-    this.screen = null;           // 'title' | 'select' | 'pause' | 'results' | null
+    this.screen = null;           // 'title' | 'select' | 'pause' | 'results' | 'initials' | 'board' | null
     this.sel = 0;
     this.t = 0;
     this.thumbs = null;           // built the first time the level list is shown
@@ -67,6 +70,8 @@ export class Menus {
   get open() { return this.screen !== null; }
 
   show(screen) {
+    // the board goes back where it was opened from, on the level it opened on
+    if (screen === 'board') { this.boardBack = this.screen ?? 'title'; this.boardAt = this.game.levelIndex; }
     this.screen = screen;
     this.t = 0;
     this.note = false;            // a locked level was just picked: its reason turns pink
@@ -88,7 +93,8 @@ export class Menus {
   #rows() {
     const g = this.game;
     switch (this.screen) {
-      case 'title': return [['play', () => this.show('select')], ['controls', () => g.menu?.show()]];
+      case 'title': return [['play', () => this.show('select')], ['leaderboard', () => this.show('board')],
+                            ['controls', () => g.menu?.show()]];
       case 'select': return LEVELS.map((lv, i) => [lv.name, () => {
         if (unlocked(i)) { g.start(i); return; }
         this.note = true;
@@ -106,6 +112,7 @@ export class Menus {
         const rows = [];
         if (g.levelIndex + 1 < LEVELS.length && unlocked(g.levelIndex + 1)) rows.push(['next level', () => g.nextLevel()]);
         rows.push(['run it again', () => { this.close(); g.restart(); }]);
+        rows.push(['leaderboard', () => this.show('board')]);
         rows.push(['level select', () => this.show('select')]);
         return rows;
       }
@@ -116,6 +123,8 @@ export class Menus {
   update(realDt) {
     const inp = this.input;
     this.t += realDt;
+    if (this.screen === 'initials') { this.#initialsStep(inp); return; }
+    if (this.screen === 'board') { this.#boardStep(inp); return; }
     const rows = this.#rows();
     // ArrowUp and W are jump keys as well as `up`: in a menu they only move.
     const up = inp.hit('up'), down = inp.hit('down');
@@ -149,6 +158,21 @@ export class Menus {
     else if (this.screen === 'select') this.#select(ctx);
     else if (this.screen === 'pause') this.#list(ctx, 'paused', null);
     else if (this.screen === 'results') this.#results(ctx);
+    else if (this.screen === 'initials') this.#initials(ctx);
+    else if (this.screen === 'board') this.#board(ctx);
+  }
+
+  /** The run is over and the panel is due: a time that makes the level's
+   *  board signs it first (see #initials), then the results. */
+  finishRun() {
+    const g = this.game;
+    g.lastRank = null;
+    const rank = boardRank(g.levelInfo, g.time);
+    if (rank < 0) { g.lastRank = -1; this.show('results'); return; }
+    this.pending = { rank };
+    this.letters = lastInitials().split('');
+    this.slot = 0;
+    this.show('initials');
   }
 
   // ------------------------------------------------------------------ title
@@ -176,7 +200,7 @@ export class Menus {
     ctx.fillStyle = 'rgba(8,6,15,0.72)';
     ctx.fillRect(0, VIEW_H - 34, VIEW_W, 34);
     const keys = (a, n = 1) => this.input.keysFor(a).slice(0, n).map(keyName).join('/') || '-';
-    const help = `${keys('jump')} jump   ${keys('dash')} dash   ${keys('vault')} ledges   ${keys('autoburst')} auto-burst`;
+    const help = `${keys('jump')} jump   ${keys('dash')} dash   ${keys('vault')} ledges   ${keys('autoburst')} burst on/off`;
     centred(ctx, help, VIEW_H - 28, '#8a7fc0', 1);
     centred(ctx, 'up/down choose   jump or enter to pick   f fullscreen', VIEW_H - 18, '#5f5590', 1);
   }
@@ -290,6 +314,87 @@ export class Menus {
       // the next level shut behind medals: what it still wants
       ...(g.levelIndex + 1 < LEVELS.length && medalsMissing(g.levelIndex + 1).length
         ? [['next needs', needsText(medalsMissing(g.levelIndex + 1)), medalsMissing(g.levelIndex + 1)[0].colour]] : []),
+      ...(g.lastRank != null ? [['leaderboard', g.lastRank >= 0 ? `${nth(g.lastRank + 1)} of ${BOARD_SIZE}` : 'not in the top ten',
+                                 g.lastRank >= 0 ? COOL : DIM]] : []),
     ]);
+  }
+
+  // ------------------------------------------------------------ leaderboard
+  // Up and down turn a letter (ArrowUp and W are jump keys too: here they
+  // only turn), left and right pick one, jump or enter signs. Backing out
+  // signs as well: a run that made the board is never thrown away.
+  #initialsStep(inp) {
+    const up = inp.hit('up'), down = inp.hit('down');
+    if (up || down) {
+      const c = this.letters[this.slot].charCodeAt(0) - 65;
+      this.letters[this.slot] = String.fromCharCode(65 + (c + (up ? 1 : 25)) % 26);
+      sfx.menuMove();
+    }
+    if (inp.hit('left') || inp.hit('right')) { this.slot = (this.slot + (inp.hit('right') ? 1 : 2)) % 3; sfx.menuMove(); }
+    if (inp.hit('confirm') || (inp.hit('jump') && !up) || inp.hit('pause') || inp.hit('dash')) {
+      const g = this.game;
+      g.lastRank = addToBoard(g.levelInfo, g.time, this.letters.join(''), g.player.deaths);
+      sfx.menuPick();
+      this.show('results');
+    }
+  }
+
+  #initials(ctx) {
+    const g = this.game;
+    ctx.fillStyle = 'rgba(8,6,15,0.55)';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    const w = 260, h = 120, x = Math.round((VIEW_W - w) / 2), y = Math.round((VIEW_H - h) / 2);
+    panel(ctx, x, y, w, h);
+    centred(ctx, 'new record', y + 8, HOT, 2);
+    centred(ctx, `${g.levelInfo.name}   ${fmtTime(g.time)}   ${nth(this.pending.rank + 1)} on the board`, y + 30, INK, 1);
+    // three letters, the one being turned in colour with a caret under it
+    const s = 4, cw = 6 * s, lx = Math.round(VIEW_W / 2 - cw * 1.5 + s / 2);
+    this.letters.forEach((ch, i) => {
+      const on = i === this.slot;
+      drawText(ctx, ch, lx + i * cw, y + 48, on ? COOL : '#ffffff', s, '#150f26');
+      if (on && Math.floor(this.t * 3) % 2 === 0) { ctx.fillStyle = COOL; ctx.fillRect(lx + i * cw, y + 48 + 5 * s + 3, 3 * s, 2); }
+    });
+    centred(ctx, 'up/down letter   left/right move', y + h - 26, DIM, 1);
+    centred(ctx, 'jump or enter: sign the board', y + h - 16, DIM, 1);
+  }
+
+  #boardStep(inp) {
+    const left = inp.hit('left'), right = inp.hit('right');
+    if (left || right) { this.boardAt = (this.boardAt + (right ? 1 : LEVELS.length - 1)) % LEVELS.length; sfx.menuMove(); }
+    if (inp.hit('confirm') || inp.hit('jump') || inp.hit('pause') || inp.hit('dash')) { sfx.menuMove(); this.show(this.boardBack); }
+  }
+
+  #board(ctx) {
+    const g = this.game;
+    ctx.fillStyle = 'rgba(8,6,15,0.66)';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    centred(ctx, 'leaderboard', 14, HOT, 2, '#150f26');
+    const lv = LEVELS[this.boardAt];
+    centred(ctx, `<  ${this.boardAt + 1} ${lv.name}  >`, 36, '#ffffff', 1);
+    const targets = medalTimes(lv).map((m) => `${m.name} ${fmtTime(m.time)}`).join('   ');
+    centred(ctx, targets, 47, '#7a6fb5', 1);
+
+    const rows = board(lv);
+    const x = 70, y = 60, w = VIEW_W - 140, rowH = 13;
+    panel(ctx, x, y, w, BOARD_SIZE * rowH + 20);
+    const cols = [[x + 10, ''], [x + 42, 'name'], [x + 92, 'time'], [x + 158, 'medal'], [x + 214, 'deaths'], [x + 272, 'date']];
+    for (const [cx, label] of cols) drawText(ctx, label, cx, y + 6, DIM, 1);
+    // this run's place, if it is this level's board you came to from the results
+    const mine = this.boardBack === 'results' && this.boardAt === g.levelIndex ? g.lastRank : -1;
+    for (let i = 0; i < BOARD_SIZE; i++) {
+      const ry = y + 18 + i * rowH, r = rows[i];
+      if (i === mine) { ctx.fillStyle = '#241e42'; ctx.fillRect(x + 2, ry - 3, w - 4, rowH - 1); }
+      drawText(ctx, nth(i + 1), cols[0][0], ry, i === mine ? HOT : DIM, 1);
+      if (!r) { drawText(ctx, '---', cols[1][0], ry, '#3f3866', 1); continue; }
+      const medal = medalFor(lv, r.t);
+      const date = r.at ? (() => { const d = new Date(r.at); return `${d.getMonth() + 1}/${d.getDate()}`; })() : '-';
+      drawText(ctx, r.name, cols[1][0], ry, i === mine ? HOT : '#ffffff', 1);
+      drawText(ctx, fmtTime(r.t), cols[2][0], ry, GOOD, 1);
+      drawText(ctx, medal ? medal.name : '-', cols[3][0], ry, medal ? medal.colour : DIM, 1);
+      drawText(ctx, r.deaths == null ? '-' : String(r.deaths), cols[4][0], ry, INK, 1);
+      drawText(ctx, date, cols[5][0], ry, INK, 1);
+    }
+    if (!rows.length) centred(ctx, 'no runs yet', y + 18 + 4.5 * rowH, DIM, 1);
+    centred(ctx, 'left/right: level   jump, enter or esc: back', VIEW_H - 12, '#564d80', 1);
   }
 }

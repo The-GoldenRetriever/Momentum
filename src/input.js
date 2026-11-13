@@ -40,7 +40,7 @@ export const ACTIONS = [
   ['jump', 'jump'],
   ['dash', 'dash'],
   ['vault', 'vault / roll'],
-  ['autoburst', 'auto-burst on/off'],
+  ['autoburst', 'burst on/off'],
   ['respawn', 'respawn'],
   ['restart', 'restart run'],
   ['next', 'next level'],

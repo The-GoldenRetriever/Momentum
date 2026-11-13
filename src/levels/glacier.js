@@ -2,7 +2,7 @@
 // your speed, but it will not let you stop, it is slow to get going on, and
 // turning round on it takes an age, so the one way through is the way the
 // other momentum courses ask for: build top gear on the run-up and never give
-// it back. Out on the meltwater lake the water holds you only on a full bar,
+// it back. Out on the meltwater lake the water holds you only at a full bar's speed,
 // and off the icefall the drop is too far for it to hold you at all: dash
 // just before you hit the water, or go through it.
 //
@@ -92,7 +92,7 @@ function course(L) {
   run(6, 2); gap(16, 0, 10);
 
   // ================================================ B — the meltwater
-  flag('MELTWATER', 'The lake holds you on a full bar. Floes, then shards.');
+  flag('MELTWATER', 'The lake holds you at a full bar\'s speed. Floes, then shards.');
   runup(48);
   lake(20); floe(7, 1); lake(14);
   shards(13); lake(12);

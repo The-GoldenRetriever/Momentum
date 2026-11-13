@@ -71,10 +71,15 @@ if (q.has('next')) {
   const idle = new Keys();
   for (let i = 0; i < Number(q.get('next')); i++) game.update(1 / 120, idle, 1 / 120);
 }
-// &screen=title|select|pause|results[&sel=<row>][&t=<s>] grabs one of the menus
+// &screen=title|select|pause|results|initials|board[&sel=<row>][&t=<s>] grabs one
+// of the menus (&time=<s> sets the run's time for results and initials;
+// board shows the board of &level, from the title)
 const scr = q.get('screen');
+const runTime = Number(q.get('time') || 63.42);
 if (scr === 'title') game.toTitle();
-else if (scr === 'results') { game.finished = true; game.time = 63.42; game.best = 58.1; game.ui.show('results'); }
+else if (scr === 'results') { game.finished = true; game.time = runTime; game.best = 58.1; game.ui.show('results'); }
+else if (scr === 'initials') { game.finished = true; game.time = runTime; game.ui.finishRun(); }
+else if (scr === 'board') { game.playing = false; game.ui.show('title'); game.ui.show('board'); }
 else if (scr) { if (scr === 'select') game.playing = false; game.ui.show(scr); }
 if (scr && q.has('sel')) game.ui.sel = Number(q.get('sel'));
 if (scr && q.has('t')) game.ui.t = Number(q.get('t'));   // (for anything that fades in)

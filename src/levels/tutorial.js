@@ -13,7 +13,10 @@
 //   * roll: a gap past what running down the slope can clear
 //   * dash: a cliff past a jump's reach, and no second wall to kick between
 //   * burst: a gap past top gear with a dash, which a burst with one clears
-//   * V: a sea that only a full bar crosses, and a burst burns the bar
+//   * V: a sea run at a full bar's speed. A burst carries you over it while
+//     it lasts, but it burns the bar, and once it is spent you slow below
+//     that speed and go through, far from either shore. (A chain of dashes,
+//     each one paying back a little bar, can still carry a good player.)
 // The dash and the burst are handed over only at their own sections
 // (Level.dashFrom, burstFrom): before them, a dash would carry you past the
 // slide's gaps and the roll's, and a burst would go off unexplained (and
@@ -191,16 +194,24 @@ function course(L) {
 
   // =============================================================== burst
   L.sign(x - 8, y - 1, 'BURST', [
-    'Sprint the bar right up to the top and the world slows:',
-    'a BURST is coming. Seconds later it fires: faster than',
-    'anything, in slow motion, until the bar runs dry.',
-    'Only a burst, and a dash off it, crosses the chasm.',
-    'Auto-burst must be on for this (V switches it).',
+    'Near the top of the bar it creeps: TOPPING OFF. Hold',
+    'your speed, lose none of it, or it starts over. Full,',
+    'the world slows a moment, then you BURST: faster',
+    'than anything, in slow motion, until the bar runs dry.',
+    'Just run: a dash fills no bar. Burst, then dash over',
+    'the chasm. (Bursting must be on: V turns it on and off.)',
   ]);
   m.sections.burst = x;
   L.burstFrom = x * TILE;
-  rock(x, x + 120, y);
-  x += 120;
+  // (the bot: run it, never dash it, as the sign says; see the chasm below)
+  m.zones.push({ at: [x, x + 231], steady: true });
+  // (from the flag, a run held at top speed tops the bar off and bursts some
+  // fifty tiles short of the edge, and is still bursting when it gets there;
+  // a run that dashes down it covers more ground filling the bar and bursts
+  // later, about fifteen short; a slower one bursts sooner, and a burst lasts
+  // about eighty tiles. Lose speed on the way and it all comes later.)
+  rock(x, x + 231, y);
+  x += 231;
   pit(x, 29, y);
   m.sections.burstGap = x;
   m.zones.push({ at: [x + 6, x + 22], dash: ['right'], vy: 200 });
@@ -211,17 +222,19 @@ function course(L) {
 
   // =============================================================== water
   L.sign(x - 9, y - 1, 'WATER', [
-    'Water holds you up while you run fast across it on at',
-    'least one full bar. A burst burns the bar, and halfway',
-    'over it would sink you: press V to switch auto-burst',
-    'OFF here, keep the bar topped up, and run it.',
+    'Water holds you up while you run at least as fast as',
+    'a full bar runs. A burst will carry you, but it burns',
+    'the bar, and when it ends you slow down and sink far',
+    'from shore: press V to switch burst OFF, and run.',
   ]);
   m.sections.water = x;
   m.zones.push({ at: [x - 8, x - 6], autoburst: true });
-  rock(x, x + 60, y);
-  x += 60;
+  // a long run to the water: a burst off the chasm burns the bar, and it has
+  // to be back to one (to a full bar's speed) by the shore
+  rock(x, x + 100, y);
+  x += 100;
   {
-    const n = 100, depth = 6;
+    const n = 280, depth = 6;      // (an auto-burst run sinks ~260 in at most)
     L.water(x, y, n, depth);
     rock(x, x + n, y + depth);
     m.sections.sea = [x, x + n];

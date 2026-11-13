@@ -73,7 +73,8 @@ export function drawHud(ctx, game) {
   const chips = [];
   if (p.bursting) chips.push(['burst', '#9cf6ff']);
   else if (p.burstWind > 0) chips.push([`burst in ${Math.ceil(p.burstWind)}  ${key('autoburst', 'v')}: stop it`, '#ffffff']);
-  else if (!p.autoBurst) chips.push([`auto-burst off (${key('autoburst', 'v')})`, '#8a7fc0']);
+  else if (p.toppingOff) chips.push(['topping off: hold your speed', '#dff3ff']);
+  else if (!p.autoBurst) chips.push([`burst off (${key('autoburst', 'v')})`, '#8a7fc0']);
   if (p.vault) chips.push([p.vault.kind === 'up' ? 'vault' : 'roll', '#ffe6a8']);
   else if (p.slopeRoll || p.rolling > 0) chips.push(['roll', '#ffe6a8']);
   else if (p.cue?.kind === 'up') chips.push([`${key('vault', 'c')}: vault`, '#ffd678']);
@@ -110,7 +111,9 @@ export function drawHud(ctx, game) {
   if (game.activeSign) {
     const s = game.activeSign;
     const w = Math.max(textWidth(s.title, 2) + 12, ...s.lines.map((l) => textWidth(l, 1) + 16));
-    const h = 16 + s.lines.length * 8;
+    // (the title is 10px tall from py + 5, the lines start at py + 20 and are
+    //  5px tall on an 8px pitch; with 5px under the last, as over the title)
+    const h = 22 + s.lines.length * 8;
     const px = Math.round((VIEW_W - w) / 2), py = 14;
     panel(ctx, px, py, w, h);
     drawText(ctx, s.title, px + 8, py + 5, '#ffd678', 2);

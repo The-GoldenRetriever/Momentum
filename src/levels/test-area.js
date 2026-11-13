@@ -154,7 +154,7 @@ export function buildTestArea() {
     'is still time to read a ledge and call it.',
     'DOWN in a burst still slides — the only way under',
     'the low rock at that speed. A dash outruns it.',
-    'The bar is the fuel: V switches auto-burst off.',
+    'The bar is the fuel: V switches bursts off.',
   ]);
   L.stairs(280, GY - 1, 4, 2, -1, H - 1);  // rolling 1-tile steps down
   ground(288, 292);

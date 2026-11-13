@@ -13,7 +13,7 @@ import { Menus } from './menus.js';
 import { sfx } from './audio.js';
 import { WALK_SPEED, WALK_MAX, OFF_EDGE, FADE_TIME, LOAD_TIME, drawLetterbox, drawFade, drawLoading } from './cutscene.js';
 
-import { store, LAST_KEY, AUTO_KEY, migrateSave, bestTime, setBest, lastUnlocked, unlocked } from './save.js';
+import { store, LAST_KEY, AUTO_KEY, migrateSave, seedBoards, bestTime, setBest, lastUnlocked, unlocked } from './save.js';
 
 const RESULTS_DELAY = 0.8;        // let the goal burst play before the panel covers it
 
@@ -43,6 +43,7 @@ export class Game {
     // drops you straight into a section of it — handy for testing
     // (an old save has its times wiped, once: see save.js)
     migrateSave();
+    seedBoards();
     // V's switch outlives the player it is flipped on: every level builds a
     // fresh one, which is handed this (see load), and it is saved as it changes
     this.autoBurst = store.get(AUTO_KEY) !== 'off';
@@ -145,6 +146,7 @@ export class Game {
     this.activeSign = null;
     this.resultsIn = 0;
     this.newBest = false;
+    this.lastRank = null;            // this run's place on the board, once it has one (-1: not on it)
     this.best = bestTime(this.levelInfo);
     this.#say(`LEVEL ${n + 1}`, `${this.levelInfo.name} \u2014 move to start`, 3.2);
   }
@@ -181,7 +183,7 @@ export class Game {
 
     // Title and level select: the world is scenery, panning past.
     const ui = this.ui.screen;
-    if (ui === 'title' || (ui === 'select' && !this.playing)) {
+    if (ui === 'title' || ((ui === 'select' || ui === 'board') && !this.playing)) {
       this.ui.update(realDt);
       this.#attractCam(false, realDt);
       return;
@@ -189,7 +191,10 @@ export class Game {
     // Pause, and level select reached from it: the run is frozen.
     if (ui === 'pause' || ui === 'select') { this.ui.update(realDt); return; }
 
-    if (ui !== 'results') {
+    // After the goal: signing the leaderboard, the results, and the board
+    // (only ever reached from the results, mid-level, since a run is over)
+    const after = (s) => s === 'results' || s === 'initials' || s === 'board';
+    if (!after(ui)) {
       if (input.hit('pause') && this.ui.input) { this.ui.show('pause'); sfx.menuMove(); return; }
       if (this.menu && input.hit('keys')) { this.menu.show(); return; }
       if (input.hit('debug')) this.debug = !this.debug;
@@ -197,17 +202,17 @@ export class Game {
       if (input.hit('respawn') && !p.dead) p.kill();
     } else {
       this.ui.update(realDt);
-      if (this.ui.screen !== 'results') return;   // it started something else
+      if (!after(this.ui.screen)) return;          // it started something else
     }
 
     // Once the run is over the player coasts to a stop under the panel.
-    p.update(dt, ui === 'results' ? IDLE : input, realDt);
+    p.update(dt, after(ui) ? IDLE : input, realDt);
     if (this.finished) p.standDown();            // (see Player.standDown)
     updateMechanics(this.level, p, dt);
     if (p.autoBurst !== this.autoBurst) {        // V, this step
       this.autoBurst = p.autoBurst;
       store.set(AUTO_KEY, p.autoBurst ? 'on' : 'off');
-      this.#say(p.autoBurst ? 'AUTO-BURST ON' : 'AUTO-BURST OFF', '', 1.1);
+      this.#say(p.autoBurst ? 'BURST ON' : 'BURST OFF', '', 1.1);
     }
 
     if (p.dead && p.deadTimer <= 0) this.respawn();
@@ -229,7 +234,7 @@ export class Game {
     }
     if (this.finished && this.resultsIn > 0 && this.ui.input) {
       this.resultsIn -= realDt;
-      if (this.resultsIn <= 0) this.ui.show('results');
+      if (this.resultsIn <= 0) this.ui.finishRun();   // (signing the board first, if it made it)
     }
 
     this.fx.update(dt);
@@ -286,7 +291,7 @@ export class Game {
       drawFade(this.ctx, (cs.out ?? 0) / FADE_TIME);
       return;
     }
-    const scenery = this.ui.screen === 'title' || (this.ui.screen === 'select' && !this.playing);
+    const scenery = this.ui.screen === 'title' || ((this.ui.screen === 'select' || this.ui.screen === 'board') && !this.playing);
     this.renderer.hideActors = scenery;
     this.renderer.draw(this, dt, realDt);
     if (!scenery) drawHud(this.ctx, this);
@@ -385,6 +390,7 @@ export class Game {
     this.finished = false;
     this.resultsIn = 0;
     this.newBest = false;
+    this.lastRank = null;
     this.respawn();
     this.player.deaths = 0;
     this.#say('RUN RESET', 'timer starts when you move', 1.6);

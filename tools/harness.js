@@ -52,7 +52,7 @@ export function makeSim(at = { x: 6, y: 26 }, custom = null, { warp = false } = 
       let dt = STEP;
       if (warp) {
         const target = p.warp;
-        const rate = target >= scale ? 9 : p.bursting ? 30 : 3;
+        const rate = target >= scale ? 9 : p.bursting ? 30 : 8;
         scale += (target - scale) * Math.min(1, STEP * rate);
         dt = STEP * Math.max(scale, P.BURST_SCALE);
       }
@@ -75,7 +75,8 @@ export function makeSim(at = { x: 6, y: 26 }, custom = null, { warp = false } = 
 // `dash` (directions, pressed again and again until a dash starts; `vy`
 // waits for the top of a jump), `roll` (C held down the slope in it),
 // `vault` (never jump in it: a ledge across a gap, where the edge comes
-// before the prompt does, and C at the prompt is the way over) and
+// before the prompt does, and C at the prompt is the way over), `steady`
+// (nothing but running: the expert dashes in no zone, so it keeps it too) and
 // `autoburst` (V, once, as it comes in). Wall-jump shafts are climbed.
 // `noVault` never presses C at a prompt (to prove a ledge needs it).
 // `autoBurst` is where V's switch starts (off, as makeSim leaves it) and

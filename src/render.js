@@ -771,14 +771,17 @@ export class Renderer {
 
     for (const s of L.signs) {
       const x = Math.round(s.x - ox), y = Math.round(s.y - oy);
-      if (x < -40 || x > VIEW_W + 40) continue;
+      if (x < -100 || x > VIEW_W + 100) continue;
       ctx.fillStyle = C.signDark; ctx.fillRect(x + 6, y + 6, 3, 11);
       ctx.fillStyle = C.sign; ctx.fillRect(x + 6, y + 6, 1, 11);
-      ctx.fillStyle = C.signDark; ctx.fillRect(x, y - 2, 16, 10);
-      ctx.fillStyle = C.sign; ctx.fillRect(x + 1, y - 1, 14, 8);
-      ctx.fillStyle = C.signLit; ctx.fillRect(x + 1, y - 1, 14, 1);
-      ctx.fillStyle = C.signDark; ctx.fillRect(x + 1, y + 6, 14, 1);
-      drawText(ctx, s.title.slice(0, 3), x + 2, y + 1, '#ffe6b0', 1);
+      // The board is as wide as its title, centred on the post: it used to be
+      // a fixed three letters wide, so every title was cut to its first three.
+      const bw = textWidth(s.title, 1) + 4, bx = x + 8 - Math.round(bw / 2);
+      ctx.fillStyle = C.signDark; ctx.fillRect(bx, y - 2, bw, 10);
+      ctx.fillStyle = C.sign; ctx.fillRect(bx + 1, y - 1, bw - 2, 8);
+      ctx.fillStyle = C.signLit; ctx.fillRect(bx + 1, y - 1, bw - 2, 1);
+      ctx.fillStyle = C.signDark; ctx.fillRect(bx + 1, y + 6, bw - 2, 1);
+      drawText(ctx, s.title, bx + 2, y + 1, '#ffe6b0', 1);
     }
 
     for (const c of L.checkpoints) {

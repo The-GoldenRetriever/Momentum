@@ -55,9 +55,10 @@ export const P = {
   SUPER_X: 450,
   HYPER_X: 500,
   WAVEDASH_X: 500,
-  WAVEDASH_BLEED: 30,        // px/s per second more drag on a wavedash's speed
+  WAVEDASH_BLEED: 90,        // px/s per second more drag on a wavedash's speed
                              // while it runs over top speed: sliding on with it,
                              // it used to outlast a plain dash's by seconds
+                             // (30 was asked to bleed it faster)
 
   WALL_SLIDE: 130,
   WALL_SLIDE_FAST: 320,
@@ -116,16 +117,22 @@ export const P = {
                              // (~118 px/s real): change one, rebalance both
   BURST_DASH: 1000,          // a dash inside a burst: the one thing that outruns
                              // it, or a dash would be a brake mid-burst
-  BURST_ARM: 1.45,           // the bar this near the top starts the wind-up
+  BURST_ARM: 1.45,           // with burst on, the bar from here to the top is the
+                             // top-off: it creeps in at TOPOFF_GAIN, and any
+                             // speed lost on the way knocks it back to here
+  TOPOFF_GAIN: 0.03,         // bar per second through the top-off (~5s of it;
+                             // 0.06, then 0.04, were asked to go slower still)
   BURST_SPEED_MIN: 280,      // ... at a real sprint, and only with auto-burst on
   BURST_DRAIN: 0.8,          // bar per world second: one bar is ~1.25s of burst
                              // (~6 real seconds at BURST_SCALE), a full tank ~2s
   BURST_SCALE: 0.21,         // the world (and the clock) runs this slowly
-  BURST_GRACE: 0.35,         // the wind-up survives dropping off the sprint this long
-  BURST_WIND: 2.5,           // real seconds of slow motion before it fires, while
-                             // the last of the bar crawls in: time to see it
-                             // coming, and to switch it off (V) if you need the bar
+  BURST_GRACE: 0.35,         // the wind-up waits this long for a dropped sprint
+  BURST_WIND: 1.5,           // real seconds of slow motion, with the bar full,
+                             // before it fires: the warning, and a last chance to
+                             // switch it off (V)
   WIND_SCALE: 0.4,           // how slowly the world runs through the wind-up
+  BURST_TAIL: 1.0,           // ... and for this many real seconds after a burst
+                             // ends, before it comes back up to speed
 
   // --- animation ----------------------------------------------------------
   SPRINT_ANIM: 170,          // above this the run is thrown properly forward
@@ -140,11 +147,12 @@ export const P = {
   SPRING_V: 700,
 
   // --- water --------------------------------------------------------------
-  WATER_SKIM: 280,           // run on water at this, upright: under it, or
-                             // sliding, or ducked, and you go through it
-  WATER_FLOW: 1,             // ... and only on at least one bar: speed alone
-                             // (a pad, a slope, a dash, a burst) is not enough
-                             // without the flow
+  WATER_SKIM: 328,           // run on water at this, upright: under it, or
+                             // sliding, or ducked, and you go through it. It is
+                             // the speed a full bar runs at (RUN_BASE + RUN_FLOW,
+                             // a hair under so a full bar at its top speed
+                             // counts), not the bar itself: anything that fast
+                             // holds, a burst, a dash or a roll included
   WATER_HIGH: 160,           // px fallen (from the top of the arc, or from the
                              // end of a dash) past which water is no floor: a
                              // dash just before the surface breaks the fall.
@@ -220,6 +228,9 @@ export class Player {
     this.waveRun = false;      // running on a wavedash's speed (see WAVEDASH_BLEED)
     this.bursting = false;     // full-flow sprint: very fast, world in slow motion
     this.burstWind = 0;        // winding up: real seconds left before it fires
+    this.burstSlow = false;    // coming down off a burst's speed: the bar waits
+    this.burstTail = 0;        // real seconds of slow motion left after a burst
+    this.lastSpeed = 0;        // the speed at the last step's flow update (the top-off watches it)
     this.burstDir = 1;
     this.bursts = 0;
     this.skidDir = 1;          // the way a skid is turning towards
@@ -231,21 +242,38 @@ export class Player {
     this.footfall = false;     // a stride just planted a boot — one frame only
   }
 
-  /** Could a wind-up start? True while you sprint on a bar nearly topped up,
-   *  and for a moment after you drop off it — getting clipped on the way
-   *  should not throw the wind-up away. (Whether it does start is autoBurst.) */
+  /** Could a wind-up start? True on a full bar at a sprint (and for a moment
+   *  after you drop off the sprint, though losing speed under your top speed
+   *  empties the top-off anyway). Whether it does start is autoBurst. */
   get canBurst() {
     return !this.bursting && this.burstWind <= 0 && !this.dead && !this.sinking && !this.vault &&
-           this.t.burstReady > 0 && this.cx >= this.level.burstFrom;
+           this.t.burstReady > 0 && this.flow >= P.FLOW_MAX - 1e-6 && this.cx >= this.level.burstFrom;
   }
 
   /** True whenever the world should be running slowly — through the wind-up
    *  as well as the burst itself, since the point of the wind-up is that you
    *  watch the world drop away before you are thrown down it. */
-  get timeWarped() { return this.bursting || this.burstWind > 0; }
+  get timeWarped() { return this.bursting || this.burstWind > 0 || this.burstTail > 0; }
+
+  /** A move paying a little bar back (a dash, a wall kick, a vault ...). With
+   *  burst on it pays only up to the top-off and never into it: a dash used
+   *  to jump the bar from the bottom of the top-off to full in one go. */
+  #refund(amount) {
+    const cap = this.autoBurst && this.cx >= this.level.burstFrom ? Math.max(this.flow, P.BURST_ARM) : P.FLOW_MAX;
+    this.flow = Math.min(cap, this.flow + amount);
+  }
+
+  /** Creeping through the top-off: burst on, the bar past BURST_ARM, not full
+   *  yet. Lose any speed now and it is back to the start of it. */
+  get toppingOff() {
+    return this.autoBurst && !this.bursting && this.burstWind <= 0 && this.flow > P.BURST_ARM &&
+           this.flow < P.FLOW_MAX && this.cx >= this.level.burstFrom;
+  }
 
   /** How fast the world should be running: main.js eases its clock toward it. */
-  get warp() { return this.bursting ? P.BURST_SCALE : this.burstWind > 0 ? P.WIND_SCALE : 1; }
+  get warp() {
+    return this.bursting ? P.BURST_SCALE : this.burstWind > 0 || this.burstTail > 0 ? P.WIND_SCALE : 1;
+  }
 
   get cx() { return this.x + this.w / 2; }
   get cy() { return this.y + this.h / 2; }
@@ -301,14 +329,14 @@ export class Player {
     if (this.rolling <= 0.02) this.rolling = P.ROLL_TIME;      // the tumble loops
   }
 
-  /** Fast enough, on at least one bar, and upright, to run on water (see
-   *  Level.skim). A burst gets no exemption: it drains the bar, and once that
-   *  is under one bar the water lets you through, so bursting across a sea is
-   *  a gamble on how much bar you started with. Coming down on it from a great
-   *  height you go straight through, unless a dash broke the fall just before. */
+  /** Running at a full bar's speed or better, upright, to run on water (see
+   *  Level.skim). Speed is all it asks: a burst runs across, and so does a
+   *  dash, while they last. Run out of a burst onto the water with the bar it
+   *  burned, though, and you slow towards an empty bar's pace and go through.
+   *  Coming down on it from a great height you go straight through, unless a
+   *  dash broke the fall just before. */
   #skimming() {
-    return !this.sliding && !this.crouching && Math.abs(this.vx) >= P.WATER_SKIM &&
-           this.flow >= P.WATER_FLOW && !this.#plunging();
+    return !this.sliding && !this.crouching && Math.abs(this.vx) >= P.WATER_SKIM && !this.#plunging();
   }
 
   /** Falling from higher than water will hold you? A dash resets the height
@@ -334,6 +362,7 @@ export class Player {
     this.slopeRoll = false;
     this.bursting = false;
     this.burstWind = 0;
+    this.burstTail = 0;
     this.crouching = false;
     this.grounded = false;
     this.gliding = false;
@@ -474,6 +503,7 @@ export class Player {
     this.cue = null;
     this.bursting = false;
     this.burstWind = 0;
+    this.burstTail = 0;
     if (cause === 'water') {                // gone under: the splash was on the way in
       for (let i = 0; i < 6; i++) this.fx.sparkle(this.cx + (Math.random() - 0.5) * 10, this.sinkSurface + 2, '#dff4ff');
     } else if (cause === 'still') {         // caught: frozen where you stood
@@ -521,6 +551,7 @@ export class Player {
     if (input.hit('jump')) t.buffer = P.JUMP_BUFFER;
     if (input.hit('vault')) t.vaultBuf = P.VAULT_BUFFER;
     if (input.hit('dash')) t.dashBuf = P.DASH_BUFFER;
+    if (this.burstTail > 0) this.burstTail = Math.max(0, this.burstTail - realDt);
     if (this.burstWind > 0) {
       // Dropping off the sprint for longer than the grace (or off the top of
       // the bar) stands the wind-up down; it starts again by itself once you
@@ -607,7 +638,7 @@ export class Player {
     this.#vaultScan(dt, ix, iy);
     this.#skidState(dt, ix);
     this.#flow(dt, ix, realDt);
-    if (!this.bursting && this.flow >= P.BURST_ARM && Math.abs(this.vx) >= P.BURST_SPEED_MIN)
+    if (!this.bursting && this.flow >= P.FLOW_MAX - 1e-6 && Math.abs(this.vx) >= P.BURST_SPEED_MIN)
       t.burstReady = P.BURST_GRACE;
     this.#animate(dt, ix);
     this.#runFx(dt);
@@ -711,7 +742,7 @@ export class Player {
     if (t.super > 0) {
       if (this.dashDir.y > 0) { this.vx = this.facing * P.HYPER_X; this.vy = -P.JUMP_V * 0.82; }
       else this.vx = this.facing * Math.max(Math.abs(this.vx), P.SUPER_X);
-      this.flow = Math.min(P.FLOW_MAX, this.flow + 0.2);
+      // (no bar: it is a dash cashed in, and dashes pay none; it paid 0.2)
       this.fx.burst(this.cx, this.footY, 12, '#9cf6ff');
       this.fx.shake(3);
       t.super = 0;
@@ -738,7 +769,7 @@ export class Player {
     this.t.buffer = 0; this.t.wallCoyote = 0; this.t.wallLock = P.WALL_LOCK; this.t.noSnap = 0.1;
     this.grounded = false;
     this.fallFrom = null;
-    this.flow = Math.min(P.FLOW_MAX, this.flow + 0.08);
+    this.#refund(0.08);
     this.fx.burst(this.x + (dir > 0 ? this.w : 0), this.cy, 8, '#cbb9ff');
     sfx.wallJump();
     // A wall jump turns you around, and turning back has always dropped a
@@ -755,6 +786,9 @@ export class Player {
     this.dashDir = { x: dx / len, y: dy / len };
     this.facing = dx !== 0 ? Math.sign(dx) : this.facing;
     this.dashes--;
+    // (a dash is speed of your own making: whatever it hands off afterwards is
+    //  not a burst's coming down any more, and the bar fills as usual)
+    this.burstSlow = false;
     // fixed for the whole dash, so a burst running out mid-dash cannot cut it short
     this.dashSpeed = this.bursting ? P.BURST_DASH : P.DASH_SPEED;
     // the run you were already making in the dash's direction, for the hand-off
@@ -768,7 +802,7 @@ export class Player {
     // profile rather than shoving the hitbox up into the rock.
     if (this.#tryStand()) this.sliding = false;
     this.fallFrom = null;
-    this.flow = Math.min(P.FLOW_MAX, this.flow + 0.15);
+    // (no bar for a dash, of either kind: it used to pay back 0.15 of one)
     this.fx.burst(this.cx, this.cy, 14, '#9cf6ff');
     this.fx.shake(3.5);
     sfx.dash();
@@ -984,8 +1018,7 @@ export class Player {
       this.vy = 0;
       this.t.super = P.SUPER_WINDOW;
       this.waveRun = true;
-      // (no bar of its own: the dash already paid its share, as any dash does;
-      //  it used to add a quarter of a bar on top)
+      // (no bar of its own either: it used to add a quarter of one)
       this.fx.burst(this.cx, this.footY, 16, '#ffe6a8');
       this.fx.shake(4);
     }
@@ -1291,7 +1324,7 @@ export class Player {
     this.h = P.H;
     this.vault = null;
     this.vy = 0;
-    this.flow = Math.min(P.FLOW_MAX, this.flow + 0.12);
+    this.#refund(0.12);
     this.t.land = 0.1;
 
     // Belt and braces: back out of anything we are still touching.
@@ -1329,9 +1362,11 @@ export class Player {
 
   // -------------------------------------------------------------- bursting
   //
-  // There is no burst button. Sprint the bar to within reach of the top and
-  // the world eases into slow motion while the last of it crawls in (the
-  // wind-up), then the burst fires by itself: you go well past a sprint, and
+  // There is no burst button. Sprint the bar up to BURST_ARM with burst on and
+  // the last of it creeps in (the top-off: lose any speed and it starts over);
+  // full, the world drops into slow motion for a second and a half (the
+  // wind-up), then
+  // the burst fires by itself: you go well past a sprint, and
   // the world (the clock included) drops to BURST_SCALE so there is still
   // time to read a ledge and call it. The bar is the fuel gauge, and a burst
   // burns all of it, so where a stretch wants the bar kept (water, top-gear
@@ -1358,6 +1393,7 @@ export class Player {
   startBurst() {
     this.bursting = true;
     this.burstWind = 0;
+    this.burstTail = 0;
     this.burstDir = Math.sign(this.vx) || this.facing;
     this.facing = this.burstDir;
     this.bursts++;
@@ -1387,11 +1423,16 @@ export class Player {
     this.burstWind = 0;
     this.t.burstReady = 0;
     this.#endBurst();
+    this.burstTail = 0;
   }
 
   #endBurst() {
     if (!this.bursting) return;
     this.bursting = false;
+    this.burstSlow = true;
+    // A second more of slow motion on the way out, so coming out of it is
+    // something you watch happen rather than a snap back to full speed.
+    this.burstTail = P.BURST_TAIL;
     // (at burst speed, not a burst dash's: that is the dash's own pace)
     if (P.BURST_SPEED >= this.recentSpeed) { this.recentSpeed = P.BURST_SPEED; this.recentDir = this.burstDir; }
     this.fx.burst(this.cx, this.cy, 14, '#dff3ff');
@@ -1420,13 +1461,31 @@ export class Player {
     if (this.bursting) return;       // the burst owns the meter while it runs
     const sp = Math.abs(this.vx);
     const moving = ix !== 0 && Math.sign(ix) === Math.sign(this.vx);
-    // Through the wind-up the last of the bar crawls in, closing the gap to
-    // the top evenly over the real seconds left (so a bar knocked back on the
-    // way still arrives, and one already full just waits): the meter slowing
-    // down is half of what tells you a burst is coming.
+    // Coming down off a burst's speed is not running fast: until you are back
+    // at your own top speed the bar does not fill (it used to refill all the
+    // way down from 560, on speed the burst paid for).
+    if (this.burstSlow && sp <= this.topSpeed) this.burstSlow = false;
+    // The top-off (burst on, past BURST_ARM): the last of the bar creeps in,
+    // and it has to be earned in one go. Any speed lost since the last step,
+    // through the top-off or the wind-up after it, and the bar drops back to
+    // where the top-off starts. Only speed lost below your top speed counts:
+    // over it, bleeding back down is just the run settling (every stride at
+    // top speed overshoots a little and drag takes it back, and a slope's or
+    // a vault's extra pace runs off the same way). A hair of slack for rounding.
+    const topping = this.autoBurst && this.flow > P.BURST_ARM && this.cx >= this.level.burstFrom;
+    if (topping && sp < Math.min(this.lastSpeed, this.topSpeed) - 0.5) {
+      this.flow = P.BURST_ARM;
+      this.burstWind = 0;
+      this.t.burstReady = 0;      // (or a wind-up started again, on a bar that is not full)
+    }
+    this.lastSpeed = sp;
     if (sp > 150 && (moving || this.sliding || this.slopeRoll || !this.grounded)) {
-      this.flow += this.burstWind > 0 ? (P.FLOW_MAX - this.flow) * Math.min(1, realDt / this.burstWind)
-                                      : dt * P.FLOW_GAIN;
+      // Nor does a dash fill it, of either kind: not while it is going, and
+      // not on the extra speed a slide-dash (a wavedash) hands you either.
+      if (!this.burstSlow && !this.dashing && !this.waveRun) {
+        const creep = this.autoBurst && this.flow >= P.BURST_ARM && this.cx >= this.level.burstFrom;
+        this.flow += dt * (creep ? P.TOPOFF_GAIN : P.FLOW_GAIN);
+      }
     }
     else if (sp > 150 && this.gliding) { /* carried along on ice: the bar holds */ }
     else if (sp < 70) this.flow -= dt * P.FLOW_STALL;
@@ -1546,7 +1605,7 @@ export class Player {
     this.t.dashCool = 0;       // a spring hands it straight back, like a crystal
     this.t.refill = 0;
     this.t.noSnap = 0.16;
-    this.flow = Math.min(P.FLOW_MAX, this.flow + 0.12);
+    this.#refund(0.12);
     this.fx.burst(this.cx, this.footY, 14, '#ffe6a8');
     this.fx.shake(3);
     sfx.spring();
@@ -1563,7 +1622,7 @@ export class Player {
     // a jog, and whatever comes after a pad is built for the speed it gives.
     this.flow = Math.max(this.flow, 1);
     if (!fresh) return;
-    this.flow = Math.min(P.FLOW_MAX, this.flow + flow);
+    this.#refund(flow);
     this.fx.burst(this.cx, this.footY, 10, '#7dffc4');
     this.fx.shake(2);
     sfx.boost();
