@@ -1,4 +1,5 @@
-// particles.js — dust, sparks, screen shake and speed lines. Pure math.
+// particles.js — dust, sparks, shockwave rings, screen shake and speed lines.
+// Pure math: the renderer draws them.
 
 export class Fx {
   constructor() {
@@ -7,6 +8,7 @@ export class Fx {
     this.shakeX = 0;
     this.shakeY = 0;
     this.lines = [];
+    this.rings = [];
   }
 
   #add(p) { if (this.parts.length < 700) this.parts.push(p); }
@@ -33,7 +35,7 @@ export class Fx {
         vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
         life: 0.2 + Math.random() * 0.35, max: 0.55,
         size: Math.random() < 0.5 ? 2 : 1,
-        colour, grav: 40,
+        colour, grav: 40, glow: true,
       });
     }
   }
@@ -57,8 +59,14 @@ export class Fx {
   sparkle(x, y, colour = '#ffe6a8') {
     this.#add({
       x, y, vx: (Math.random() - 0.5) * 20, vy: -20 - Math.random() * 20,
-      life: 0.3 + Math.random() * 0.3, max: 0.6, size: 1, colour, grav: -10,
+      life: 0.3 + Math.random() * 0.3, max: 0.6, size: 1, colour, grav: -10, glow: true,
     });
+  }
+
+  /** A shockwave: a ring that swells to `r` and fades. `flat` squashes it to
+   *  an ellipse lying on the ground, for an impact underfoot. */
+  ring(x, y, r, colour = '#9cf6ff', life = 0.3, flat = false) {
+    if (this.rings.length < 24) this.rings.push({ x, y, r, colour, life, max: life, flat });
   }
 
   /** A streak tearing past. `x` is the end the streak starts from — it always
@@ -79,6 +87,9 @@ export class Fx {
       p.vx *= 1 - Math.min(1, dt * 3);
     }
     this.parts = this.parts.filter((p) => p.life > 0);
+
+    for (const r of this.rings) r.life -= dt;
+    this.rings = this.rings.filter((r) => r.life > 0);
 
     for (const l of this.lines) { l.life -= dt; l.x += l.vx * dt * 0.35; }
     this.lines = this.lines.filter((l) => l.life > 0);

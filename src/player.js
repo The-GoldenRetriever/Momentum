@@ -512,6 +512,7 @@ export class Player {
       sfx.frozen();
     } else {
       this.fx.burst(this.cx, this.cy, 26, '#ef5a5a');
+      this.fx.ring(this.cx, this.cy, 22, '#ef5a5a', 0.35);
       this.fx.shake(6);
       sfx.death();
     }
@@ -771,6 +772,7 @@ export class Player {
     this.fallFrom = null;
     this.#refund(0.08);
     this.fx.burst(this.x + (dir > 0 ? this.w : 0), this.cy, 8, '#cbb9ff');
+    this.fx.ring(this.x + (dir > 0 ? this.w : 0), this.cy, 9, '#cbb9ff', 0.2);
     sfx.wallJump();
     // A wall jump turns you around, and turning back has always dropped a
     // burst. It has to here in particular: the burst pins vx into the wall
@@ -804,6 +806,7 @@ export class Player {
     this.fallFrom = null;
     // (no bar for a dash, of either kind: it used to pay back 0.15 of one)
     this.fx.burst(this.cx, this.cy, 14, '#9cf6ff');
+    this.fx.ring(this.cx, this.cy, 16, '#9cf6ff', 0.25);
     this.fx.shake(3.5);
     sfx.dash();
   }
@@ -1020,6 +1023,7 @@ export class Player {
       this.waveRun = true;
       // (no bar of its own either: it used to add a quarter of one)
       this.fx.burst(this.cx, this.footY, 16, '#ffe6a8');
+      this.fx.ring(this.cx, this.footY, 18, '#ffe6a8', 0.3, true);
       this.fx.shake(4);
     }
   }
@@ -1082,6 +1086,7 @@ export class Player {
   #onLand() {
     const impact = clamp(this.vy / P.FALL_MAX, 0, 1);
     this.fx.dust(this.cx, this.footY, 0, 4 + impact * 8);
+    if (impact > 0.35) this.fx.ring(this.cx, this.footY, 8 + impact * 14, '#e8e2ff', 0.25, true);
     this.t.land = 0.14;
     if (impact > 0.25) { this.fx.shake(impact * 5); sfx.land(); }
     // A landing never costs anything, however far it came down (it used to
@@ -1401,6 +1406,8 @@ export class Player {
     // Posture is the player's business. Cash a burst out of a slide and you
     // stay in it; the slide rules let go of you the moment you let go of down.
     this.fx.burst(this.cx, this.cy, 26, '#9cf6ff');
+    this.fx.ring(this.cx, this.cy, 48, '#bff4ff', 0.45);
+    this.fx.ring(this.cx, this.cy, 26, '#ffffff', 0.3);
     this.fx.shake(6);
     sfx.burst();
   }

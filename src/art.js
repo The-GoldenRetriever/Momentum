@@ -694,7 +694,24 @@ function bake(rowsIn, flip) {
       ctx.fillRect(flip ? SPRITE_W - 1 - x : x, y, 1, 1);
     }
   }
+  outline(c);
   return c;
+}
+
+// A dark rim round the figure (every empty pixel touching it), so it reads
+// against busy rock and bright sky alike.
+function outline(c) {
+  const ctx = c.getContext('2d');
+  const img = ctx.getImageData(0, 0, c.width, c.height), d = img.data, w = c.width, h = c.height;
+  const solid = (x, y) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] > 0;
+  const rim = [];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!solid(x, y) && (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1))) rim.push((y * w + x) * 4);
+    }
+  }
+  for (const i of rim) { d[i] = 0x12; d[i + 1] = 0x0c; d[i + 2] = 0x22; d[i + 3] = 230; }
+  ctx.putImageData(img, 0, 0);
 }
 
 // Solid-colour stamp of a sprite, used for dash afterimages.

@@ -32,21 +32,47 @@ export function drawHud(ctx, game) {
 
   // ---- flow + speed, bottom left
   const x = 8, y = VIEW_H - 22;
+  const rt = game.renderer?.rt ?? 0;
   drawText(ctx, 'flow', x, y - 8, '#6f649c', 1);
-  ctx.fillStyle = '#221c3a';
+  // The bar runs the whole capacity, framed, with a notch at one bar (what
+  // sits past it is top gear) and the top-off (BURST_ARM to the top, where a
+  // burst is earned) hatched while bursting is on. It shimmers through the
+  // top-off, flashes through the wind-up, and pours away in a burst.
+  ctx.fillStyle = '#0b0918';
+  ctx.fillRect(x - 1, y - 1, barW + 2, 7);
+  ctx.fillStyle = '#3b3163';
+  ctx.fillRect(x - 1, y - 1, barW + 2, 1);
+  ctx.fillStyle = '#1a1530';
   ctx.fillRect(x, y, barW, 5);
-  // The bar runs the whole capacity, with a notch at one bar (what sits past
-  // it is top gear) and the last stretch, where a wind-up starts, drawn as
-  // a darker cap: reach it with auto-burst on and the burst comes.
   const span = barW - 2;
   const f = Math.round((p.flow / P.FLOW_MAX) * span);
   const gate = Math.round((1 / P.FLOW_MAX) * span);
   const arm = Math.round((P.BURST_ARM / P.FLOW_MAX) * span);
-  ctx.fillStyle = p.autoBurst ? '#2e2850' : '#1c1830';
-  ctx.fillRect(x + 1 + arm, y + 1, span - arm, 3);
-  ctx.fillStyle = p.flow >= 1 ? '#9cf6ff' : p.flow > 0.5 ? '#63e0b0' : '#5b9adf';
+  if (p.autoBurst) {
+    ctx.fillStyle = '#2e2850';
+    for (let i = arm; i < span; i++) if ((i + 0) % 3 === 0) ctx.fillRect(x + 1 + i, y + 1, 1, 3);
+  }
+  const base = p.bursting ? '#bff4ff' : p.flow >= 1 ? '#5fd8f0' : p.flow > 0.5 ? '#4fc89c' : '#4a86cc';
+  const lit = p.bursting ? '#ffffff' : p.flow >= 1 ? '#bff4ff' : p.flow > 0.5 ? '#9cf0c8' : '#8ab8f0';
+  ctx.fillStyle = base;
   ctx.fillRect(x + 1, y + 1, f, 3);
-  if (f > gate) { ctx.fillStyle = '#dff3ff'; ctx.fillRect(x + 1 + gate, y + 1, f - gate, 3); }
+  ctx.fillStyle = lit;
+  ctx.fillRect(x + 1, y + 1, f, 1);
+  if (f > gate) { ctx.fillStyle = '#e8f8ff'; ctx.fillRect(x + 1 + gate, y + 1, f - gate, 2); }
+  if (p.bursting) {                                // pouring away: light running back along it
+    for (let i = 0; i < f; i += 6) {
+      const k = Math.floor((i + rt * 90) % f);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x + 1 + k, y + 1, 2, 3);
+    }
+  }
+  if (p.toppingOff) {                              // creeping in: the front of it breathes
+    ctx.globalAlpha = 0.5 + 0.5 * Math.sin(rt * 9);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x + f - 1, y, 3, 5);
+    ctx.globalAlpha = 1;
+  }
+  if (p.burstWind > 0 && Math.floor(rt * 12) % 2 === 0) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x, y, barW, 5); }
   ctx.fillStyle = p.flow >= 1 ? '#0b0a14' : '#443a6e';
   ctx.fillRect(x + 1 + gate, y + 1, 1, 3);
   if (p.flow > P.FLOW_MAX - 0.02) { ctx.fillStyle = '#ffffff'; ctx.fillRect(x + barW - 2, y, 2, 5); }
@@ -55,12 +81,14 @@ export function drawHud(ctx, game) {
   drawText(ctx, `${spd}`.padStart(3, ' '), x + barW + 6, y - 1, spd > 300 ? '#9cf6ff' : '#b9b2d6', 1);
   drawText(ctx, 'px/s', x + barW + 20, y - 1, '#564d80', 1);
 
-  // ---- dash pips
+  // ---- dash pips: little diamonds, lit while you have one to spend
   for (let i = 0; i < (p.dashLocked ? 0 : p.maxDashes); i++) {   // (no pip until you have a dash)
-    const dx = x + i * 7, dy = y + 9;
-    ctx.fillStyle = i < p.dashes ? '#9cf6ff' : '#2f2950';
-    ctx.fillRect(dx, dy, 4, 4);
-    if (i < p.dashes) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx + 1, dy + 1, 1, 1); }
+    const dx = x + 2 + i * 8, dy = y + 9;
+    const on = i < p.dashes;
+    ctx.fillStyle = on ? '#9cf6ff' : '#2f2950';
+    ctx.fillRect(dx + 2, dy, 1, 1); ctx.fillRect(dx + 1, dy + 1, 3, 1); ctx.fillRect(dx, dy + 2, 5, 1);
+    ctx.fillRect(dx + 1, dy + 3, 3, 1); ctx.fillRect(dx + 2, dy + 4, 1, 1);
+    if (on) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx + 2, dy + 1, 1, 2); }
   }
 
   // ---- state chips (only what is currently doing something). The prompts

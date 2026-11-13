@@ -315,6 +315,7 @@ export class Game {
         c.on = true;
         this.spawnPoint = { x: c.x - p.w / 2, y: c.y - p.h - 2 };
         this.fx.burst(c.x, c.y - 12, 14, '#7dffc4');
+        this.fx.ring(c.x, c.y - 12, 24, '#7dffc4', 0.4);
         sfx.checkpoint();
         this.#say('CHECKPOINT', null, 1.1);
       }
@@ -325,6 +326,8 @@ export class Game {
       g.hit = true;
       this.finished = true;
       this.fx.burst(g.x + g.w / 2, g.y + g.h / 2, 40, '#7dffc4');
+      this.fx.ring(g.x + g.w / 2, g.y + g.h / 2, 60, '#7dffc4', 0.6);
+      this.fx.ring(g.x + g.w / 2, g.y + g.h / 2, 34, '#ffffff', 0.4);
       this.fx.shake(6);
       sfx.goal();
       this.newBest = !this.best || this.time < this.best;

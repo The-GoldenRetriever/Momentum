@@ -5,6 +5,7 @@ import { makeCanvas, sprites, ghosts, SPRITE_W, SPRITE_H } from './art.js';
 import { drawText, textWidth } from './font.js';
 import { phaseState, M } from './mechanics.js';
 import { keyName } from './input.js';
+import { P } from './player.js';
 
 export const VIEW_W = 480;
 export const VIEW_H = 270;
@@ -47,6 +48,7 @@ export const THEMES = {
     edge: '#8477c4', edgeDim: '#5a4f8c', rockDeep: '#221d3c',
     moss: '#5cd9a0', mossLit: '#8bf0bf', mossDark: '#2b8f66', mossShade: '#1b6349',
     vine: '#2f9a6d', vineDark: '#1d6b4c', vineLit: '#6ee0a6',
+    flowers: ['#ff8ab0', '#ffd678', '#a8c8ff'], ambient: 'fireflies', trees: true,
   },
   // underground: no sky worth the name, teal stone, glowing fungus
   cave: {
@@ -68,6 +70,7 @@ export const THEMES = {
     edge: '#6fc2b6', edgeDim: '#3f7f78', rockDeep: '#0f2124',
     moss: '#8ff27a', mossLit: '#d2ffb0', mossDark: '#4ea83e', mossShade: '#2c6b26',
     vine: '#5fd08a', vineDark: '#2e7a4c', vineLit: '#b8ffcf',
+    flowers: ['#9cf6ff', '#d2ffb0'], ambient: 'spores', underground: true,
   },
   // the sun going down behind the ridges, warm rock, dry grass
   dusk: {
@@ -89,6 +92,7 @@ export const THEMES = {
     edge: '#e8a28a', edgeDim: '#a86a62', rockDeep: '#2e1a24',
     moss: '#e8c45a', mossLit: '#ffe89a', mossDark: '#b08a32', mossShade: '#7a5a22',
     vine: '#c09a3a', vineDark: '#86642a', vineLit: '#ffe08a',
+    flowers: ['#ff9a6a', '#ffd678'], ambient: 'dust', trees: true,
   },
   // first light: a cold blue sky going pale at the horizon, steel girders,
   // frost on the grass
@@ -111,6 +115,7 @@ export const THEMES = {
     edge: '#a6b8dc', edgeDim: '#6e7fa2', rockDeep: '#1d2333',
     moss: '#cfe6f2', mossLit: '#ffffff', mossDark: '#8fb0c4', mossShade: '#5d7d92',
     vine: '#9ec4d6', vineDark: '#5f8698', vineLit: '#e8f8ff',
+    ambient: 'motes', trees: true,
   },
   // high and cold under the northern lights: a green-washed sky, slate rock,
   // pale growth
@@ -133,6 +138,7 @@ export const THEMES = {
     edge: '#9fe8d0', edgeDim: '#5f9c8c', rockDeep: '#1a2028',
     moss: '#a8ffd8', mossLit: '#f0fff8', mossDark: '#5cc8a0', mossShade: '#3a8a6e',
     vine: '#7ae0b8', vineDark: '#3e8a70', vineLit: '#d8fff0',
+    flowers: ['#a8ffd8', '#d0b8ff'], ambient: 'snow', trees: true, aurora: true,
   },
   // the glass sea at evening: a low gold sun through grey haze, wet dark rock,
   // and water still enough to mirror the sky
@@ -156,6 +162,7 @@ export const THEMES = {
     moss: '#c8d890', mossLit: '#f0f8c8', mossDark: '#8ca060', mossShade: '#5c6c40',
     vine: '#a0b070', vineDark: '#5c6c40', vineLit: '#e0f0b0',
     water: { body: '#4c6680', deep: '#2c3e56', surf: '#e8dcc0', lit: '#fff6dc' },
+    flowers: ['#ffe7b8', '#f6a0a0'], ambient: 'mist',
   },
   // where the Stillness has passed: a pale sky with no wind in it, frost on
   // grey rock, nothing growing
@@ -178,6 +185,7 @@ export const THEMES = {
     edge: '#dde2f4', edgeDim: '#9ea4bc', rockDeep: '#262834',
     moss: '#eef2ff', mossLit: '#ffffff', mossDark: '#b8bed8', mossShade: '#868ca6',
     vine: '#c8cee6', vineDark: '#868ca6', vineLit: '#f4f6ff',
+    ambient: 'snow', trees: true,
   },
   // the glacier: a hard blue sky over blue-white ice and the dark rock under
   // it, snow where anything would grow, and meltwater the colour of glass
@@ -201,6 +209,7 @@ export const THEMES = {
     moss: '#eef8ff', mossLit: '#ffffff', mossDark: '#b4d2e8', mossShade: '#7e9cb8',
     vine: '#bfe0f4', vineDark: '#7e9cb8', vineLit: '#f0faff',
     water: { body: '#2f7aa6', deep: '#1c4c70', surf: '#dcf8ff', lit: '#ffffff' },
+    ambient: 'snow', trees: true,
   },
   // deep down where the rock runs hot: charcoal stone, glowing seams, ember
   // growth instead of moss
@@ -223,6 +232,7 @@ export const THEMES = {
     edge: '#ff9a52', edgeDim: '#b0582c', rockDeep: '#1a1112',
     moss: '#ff7a2e', mossLit: '#ffd08a', mossDark: '#c04a1a', mossShade: '#7a2a10',
     vine: '#e05a22', vineDark: '#8a3214', vineLit: '#ffb060',
+    ambient: 'embers', seams: true, underground: true,
   },
 };
 
@@ -240,11 +250,52 @@ const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 // edges) may lean on them or it would be left hanging when they vanish.
 const rock = (L, tx, ty) => { const t = L.get(tx, ty); return t === T.SOLID || t === T.LOWCEIL; };
 
+// '#rrggbb' -> [r, g, b], a mix of two, and back to a colour the canvas takes
+const rgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const mix = (a, b, t) => { const A = rgb(a), B = rgb(b); return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join(''); };
+// ... and as the 32-bit pixel an ImageData buffer wants (little-endian ABGR)
+const px32 = (h) => { const [r, g, b] = rgb(h); return (255 << 24 | b << 16 | g << 8 | r) >>> 0; };
+
+// A position's own random number in [0, 1). Integer mixing throughout: the
+// old one multiplied in floating point, lost bits, and for a fixed y and a
+// small run of x never came up over about 0.7, so every 'one in so many'
+// detail (stalactites, pines, flares) all but never happened.
 function hash(x, y) {
-  let h = x * 374761393 + y * 668265263;
-  h = (h ^ (h >> 13)) * 1274126177;
-  return ((h ^ (h >> 16)) >>> 0) / 4294967296;
+  let h = Math.imul(x | 0, 0x27d4eb2d) ^ Math.imul((y | 0) + 0x9e3779b9, 0x165667b1);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
+
+// Soft round glows, one per colour and size, made once and drawn additively.
+const glows = new Map();
+function glowSprite(col, r) {
+  const key = col + r;
+  if (!glows.has(key)) {
+    const c = makeCanvas(r * 2, r * 2), g = c.getContext('2d');
+    const [R, G, B] = rgb(col);
+    const grad = g.createRadialGradient(r, r, 0, r, r, r);
+    grad.addColorStop(0, `rgba(${R},${G},${B},0.55)`);
+    grad.addColorStop(0.35, `rgba(${R},${G},${B},0.22)`);
+    grad.addColorStop(1, `rgba(${R},${G},${B},0)`);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, r * 2, r * 2);
+    glows.set(key, c);
+  }
+  return glows.get(key);
+}
+
+// What drifts through the air of each theme (see Renderer.#ambient): how many,
+// which way, how fast, their colours, and whether they glow.
+const AMBIENT = {
+  fireflies: { n: 26, cols: ['#d8ff8a', '#fff2a0'], glow: true, drift: [8, -2], wander: 14, blink: true, low: true },
+  spores: { n: 40, cols: ['#8ff2e0', '#c8fff0'], glow: true, drift: [3, -9], wander: 6 },
+  dust: { n: 46, cols: ['#ffd8a8', '#ffc490'], drift: [-10, 2], wander: 5, faint: true },
+  motes: { n: 36, cols: ['#fff4dc', '#dce8ff'], glow: true, drift: [-6, -3], wander: 6, faint: true },
+  snow: { n: 90, cols: ['#ffffff', '#e6f2ff'], drift: [-8, 22], wander: 9 },
+  mist: { n: 40, cols: ['#ffffff', '#dde8f0'], drift: [-14, -2], wander: 4, faint: true },
+  embers: { n: 60, cols: ['#ff9a3c', '#ffd070', '#ff6a2a'], glow: true, drift: [4, -30], wander: 10, blink: true },
+};
 
 export class Renderer {
   constructor(ctx, level) {
@@ -255,10 +306,15 @@ export class Renderer {
     this.tiles = this.#bakeTiles(level);
     this.sky = this.#bakeSky();
     this.#bakeRidges();
-    this.motes = Array.from({ length: 110 }, (_, i) => ({
-      x: hash(i, 1) * level.w * TILE, y: hash(i, 2) * level.h * TILE,
-      p: 0.3 + hash(i, 3) * 0.5, s: hash(i, 4) < 0.25 ? 2 : 1, t: hash(i, 5) * 6,
+    // the air: each theme's own drift (snow, embers, fireflies ...), in screen
+    // space with a little parallax, wrapping round the view
+    this.amb = AMBIENT[TH.ambient] ?? AMBIENT.motes;
+    this.motes = Array.from({ length: this.amb.n }, (_, i) => ({
+      x: hash(i, 1) * (VIEW_W + 40), y: hash(i, 2) * (VIEW_H + 40),
+      p: 0.35 + hash(i, 3) * 0.8, s: hash(i, 4) < 0.3 ? 2 : 1, t: hash(i, 5) * 6,
+      col: this.amb.cols[i % this.amb.cols.length],
     }));
+    this.aurora = !!TH.aurora;
     this.scarf = null;
     this.shiftX = 0;     // how far the frame draws the body off its last step
     this.shiftY = 0;     // (see Game.draw); the scarf follows it
@@ -289,9 +345,33 @@ export class Renderer {
     grad.addColorStop(1, TH.sky[3]);
     g.fillStyle = grad;
     g.fillRect(0, 0, VIEW_W, VIEW_H);
+    // a glow along the horizon, for the ridges to stand dark against
+    const glow = g.createLinearGradient(0, VIEW_H * 0.45, 0, VIEW_H);
+    glow.addColorStop(0, 'rgba(0,0,0,0)');
+    glow.addColorStop(1, mix(TH.sky[3], '#ffffff', 0.18) + '66');
+    g.fillStyle = glow;
+    g.fillRect(0, 0, VIEW_W, VIEW_H);
+
+    // Underground there is no sky: a far wall of great dim boulders instead
+    if (TH.underground) {
+      // (lifted a little, so the cave roof's teeth hang dark against it)
+      g.fillStyle = `${TH.ridges[1].rim}30`;
+      g.fillRect(0, 0, VIEW_W, VIEW_H);
+      const wall = TH.ridges[0].col, lit = TH.ridges[0].rim;
+      for (let y = 0; y < VIEW_H; y++) {
+        const row = Math.floor(y / 22), ry = y % 22;
+        for (let x = 0; x < VIEW_W; x++) {
+          const sx = x + Math.floor(hash(row, 5) * 40);
+          const k = Math.floor(sx / 34), lx = sx % 34;
+          if (ry === 0 || lx === 0) { g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(x, y, 1, 1); }
+          else if (ry === 1 || lx === 1) { g.fillStyle = `${lit}22`; g.fillRect(x, y, 1, 1); }
+          else if (hash(k, row) > 0.6 && hash(x, y) > 0.7) { g.fillStyle = `${wall}55`; g.fillRect(x, y, 1, 1); }
+        }
+      }
+    }
 
     // stars, brighter and denser towards the top of the sky
-    for (let i = 0; i < 260 * TH.stars; i++) {
+    for (let i = 0; i < (TH.underground ? 0 : 260 * TH.stars); i++) {
       const x = Math.floor(hash(i, 9) * VIEW_W);
       const y = Math.floor(Math.pow(hash(i, 10), 1.6) * VIEW_H * 0.8);
       const a = (0.05 + hash(i, 11) * 0.5) * (1 - y / (VIEW_H * 0.9));
@@ -344,8 +424,42 @@ export class Renderer {
   }
 
   #bakeTiles(L) {
-    const c = makeCanvas(L.w * TILE, L.h * TILE);
+    const W = L.w * TILE, H = L.h * TILE;
+    const c = makeCanvas(W, H);
     const g = c.getContext('2d');
+    // The rock itself goes in pixel by pixel, straight into a buffer (millions
+    // of fillRects took seconds); everything drawn over it comes after.
+    const img = g.createImageData(W, H);
+    this.buf = new Uint32Array(img.data.buffer);
+    this.bufW = W;
+    // courses of uneven height (4 to 8 pixels), as natural rock lies
+    this.course = new Int32Array(H);      // course index of each pixel row
+    this.courseY = new Int8Array(H);      // ... how far down it, and its height
+    this.courseH = new Int8Array(H);
+    for (let y = 0, r = 0; y < H; r++) {
+      const h = 4 + Math.floor(hash(r, 77) * 5);
+      for (let k = 0; k < h && y < H; k++, y++) { this.course[y] = r; this.courseY[y] = k; this.courseH[y] = h; }
+    }
+    this.pal = TH.bands.map((b) => ({
+      dark: px32(b.dark), dark2: px32(mix(b.mid, b.dark, 0.55)), mid: px32(b.mid),
+      midDim: px32(mix(b.mid, b.dark, 0.25)), mid2: px32(mix(b.mid, b.lit, 0.35)),
+      lit: px32(b.lit), vein: px32(b.vein),
+    }));
+    for (let ty = 0; ty < L.h; ty++) {
+      for (let tx = 0; tx < L.w; tx++) {
+        const t = L.get(tx, ty), x = tx * TILE, y = ty * TILE;
+        if (t === T.SOLID) this.#rockFace(x, y, TILE, TILE, this.#depthAt(L, tx, ty));
+        else if (t === T.LOWCEIL) this.#rockFace(x, y, TILE, 6, 1);
+        else if (isSlope(t)) {
+          for (let px = 0; px < TILE; px++) {
+            const top = t === T.SLOPE_R ? TILE - 1 - px : px;
+            this.#rockFace(x + px, y + top, 1, TILE - top, 0);
+          }
+        }
+      }
+    }
+    g.putImageData(img, 0, 0);
+    this.buf = this.course = this.courseY = this.courseH = null;
     for (let ty = 0; ty < L.h; ty++) {
       for (let tx = 0; tx < L.w; tx++) {
         const t = L.get(tx, ty);
@@ -364,22 +478,42 @@ export class Renderer {
     return c;
   }
 
-  #rockFace(g, x, y, w, h, depth = 0, seed = 0) {
-    const band = TH.bands[Math.min(TH.bands.length - 1, depth)];
-    g.fillStyle = band.mid;
-    g.fillRect(x, y, w, h);
+  /** Rock, into the bake buffer: courses of stones seven pixels high, each
+   *  stone its own width, lit along its top and left and shadowed along its
+   *  bottom and right, with rounded corners and the odd fleck. The pattern
+   *  runs in world pixels, so it carries across tile seams. Deeper rock is
+   *  calmer: less light on the stones, softer mortar. */
+  #rockFace(x, y, w, h, depth = 0) {
+    const d = Math.min(this.pal.length - 1, depth);
+    const P = this.pal[d];
+    const buf = this.buf, W = this.bufW;
+    const seams = !!TH.seams;
     for (let py = 0; py < h; py++) {
       const wy = y + py;
+      const row = this.course[wy], ry = this.courseY[wy], last = this.courseH[wy] - 1;
+      const off = Math.floor(hash(row, 991) * 23);
+      // stones 7 to 21 wide, and now and then a long slab
+      const cw = 14, jit = (k) => (hash(k, row * 7 + 3) > 0.86 ? 0 : 1) * (Math.floor(hash(k, row * 7 + 5) * 9) - 4);
       for (let px = 0; px < w; px++) {
-        const wx = x + px;
-        const n = hash(wx, wy + seed);
-        let col = null;
-        if (n > 0.955) col = band.lit;
-        else if (n > 0.86) col = band.dark;
-        else if (n > 0.845) col = band.vein;                                  // mineral fleck
-        else if (wy % 9 === 0 && hash(wx >> 1, wy) > 0.45) col = band.dark;   // strata
-        else if (wy % 9 === 1 && hash(wx >> 1, wy) > 0.72) col = band.lit;
-        if (col) { g.fillStyle = col; g.fillRect(wx, wy, 1, 1); }
+        const wx = x + px, sx = wx + off;
+        let k = Math.floor(sx / cw), start = k * cw + jit(k);
+        if (sx < start) { k--; start = k * cw + jit(k); }
+        const lx = sx - start, sw = (k + 1) * cw + jit(k + 1) - start;
+        const n = hash(wx * 3 + 7, wy * 5 + 1);
+        let col;
+        if (ry === 0 || lx === 0) col = seams && hash(wx >> 1, wy >> 1) > 0.82 ? P.vein : d >= 1 ? P.dark2 : P.dark;
+        else if ((ry === 1 && lx === 1) || (ry === last && lx === sw - 1)) col = P.dark2;
+        else if (ry === 1) col = d >= 2 ? P.mid2 : P.lit;
+        else if (lx === 1) col = d >= 2 ? P.mid : P.mid2;
+        else if (ry === last || lx === sw - 1) col = P.midDim;
+        else if (n > 0.975) col = d >= 2 ? P.mid2 : P.lit;
+        else if (n < 0.025) col = P.dark2;
+        else if (n > 0.966) col = P.vein;
+        else {
+          const tint = hash(k, row);
+          col = tint > 0.72 ? P.mid2 : tint < 0.3 ? P.midDim : P.mid;
+        }
+        buf[wy * W + wx] = col;
       }
     }
   }
@@ -394,10 +528,9 @@ export class Renderer {
     const up = rock(L, tx, ty - 1), dn = rock(L, tx, ty + 1);
     const lf = rock(L, tx - 1, ty), rt = rock(L, tx + 1, ty);
     const depth = this.#depthAt(L, tx, ty);
-    this.#rockFace(g, x, y, TILE, TILE, depth);
 
     // a crack running through some of the buried blocks
-    if (depth > 0 && hash(tx, ty * 3) > 0.86) {
+    if (depth > 0 && hash(tx, ty * 3) > 0.93) {
       const band = TH.bands[Math.min(TH.bands.length - 1, depth)];
       g.fillStyle = band.dark;
       let cx = x + 2 + Math.floor(hash(tx, ty) * (TILE - 5));
@@ -409,20 +542,34 @@ export class Renderer {
     }
 
     if (!up && L.isIce(tx, ty)) this.#iceCap(g, tx, ty, x, y);
-    else if (!up) {                              // mossy cap
+    else if (!up) {                              // grassy cap, ragged underneath
       g.fillStyle = TH.mossLit;
       g.fillRect(x, y, TILE, 1);
       g.fillStyle = TH.moss;
-      g.fillRect(x, y + 1, TILE, 2);
-      g.fillStyle = TH.mossDark;
+      g.fillRect(x, y + 1, TILE, 3);
       for (let px = 0; px < TILE; px++) {
-        const d = hash(tx * 16 + px, ty) > 0.55 ? 1 : 0;
-        g.fillRect(x + px, y + 3, 1, 1 + d);
+        const hang = Math.floor(hash(tx * 16 + px, ty) * 3);
+        g.fillStyle = TH.mossDark;
+        g.fillRect(x + px, y + 4, 1, 1 + hang);
+        g.fillStyle = TH.mossShade;
+        g.fillRect(x + px, y + 5 + hang, 1, 1);
+        if (hash(tx * 31 + px, ty * 7) > 0.8) { g.fillStyle = TH.moss; g.fillRect(x + px, y - 1, 1, 1); }
+        if (hash(tx * 13 + px, ty * 3) > 0.9) { g.fillStyle = TH.mossLit; g.fillRect(x + px, y + 1, 1, 1); }
       }
-      g.fillStyle = TH.mossShade;
-      g.fillRect(x, y + 5, TILE, 1);
-      for (let px = 0; px < TILE; px++) {
-        if (hash(tx * 31 + px, ty * 7) > 0.86) { g.fillStyle = TH.moss; g.fillRect(x + px, y - 1, 1, 1); }
+      // grass spilling over an open side, and the odd flower
+      for (const [open, sx] of [[!lf, x - 1], [!rt, x + TILE]]) {
+        if (!open) continue;
+        const len = 2 + Math.floor(hash(sx, ty) * 4);
+        g.fillStyle = TH.moss; g.fillRect(sx, y, 1, len);
+        g.fillStyle = TH.mossDark; g.fillRect(sx, y + len, 1, 1);
+      }
+      const fl = TH.flowers;
+      if (fl && hash(tx * 7, ty * 11) > 0.72) {
+        const fx = x + 2 + Math.floor(hash(tx, ty * 5) * 12);
+        g.fillStyle = TH.mossDark; g.fillRect(fx, y - 2, 1, 2);
+        g.fillStyle = fl[Math.floor(hash(tx * 3, ty) * fl.length)];
+        g.fillRect(fx - 1, y - 3, 3, 1); g.fillRect(fx, y - 4, 1, 3);
+        g.fillStyle = '#fff6d0'; g.fillRect(fx, y - 3, 1, 1);
       }
     } else {
       g.fillStyle = 'rgba(14,10,26,0.35)';       // ambient occlusion under rock
@@ -470,8 +617,6 @@ export class Renderer {
     const right = t === T.SLOPE_R;
     for (let px = 0; px < TILE; px++) {
       const localTop = right ? TILE - 1 - px : px;
-      const h = TILE - localTop;
-      this.#rockFace(g, x + px, y + localTop, 1, h, 0);
       g.fillStyle = TH.mossLit;
       g.fillRect(x + px, y + localTop, 1, 1);
       g.fillStyle = TH.moss;
@@ -516,7 +661,6 @@ export class Renderer {
   }
 
   #drawLowCeil(g, x, y, tx) {
-    this.#rockFace(g, x, y, TILE, 6, 1);
     g.fillStyle = TH.edge;
     g.fillRect(x, y, TILE, 1);
     g.fillStyle = TH.rockDeep;
@@ -583,7 +727,7 @@ export class Renderer {
         }
 
         // the odd glowing crystal buried in deep rock
-        if (t === T.SOLID && this.#depthAt(L, tx, ty) >= 2 && hash(tx * 3, ty * 5) > 0.965) {
+        if (t === T.SOLID && this.#depthAt(L, tx, ty) >= 2 && hash(tx * 3, ty * 5) > 0.988) {
           const px = x + 5 + Math.floor(hash(tx, ty) * 5), py = y + 5 + Math.floor(hash(ty, tx) * 5);
           g.fillStyle = 'rgba(111,232,255,0.25)';
           g.fillRect(px - 2, py - 2, 5, 5);
@@ -598,7 +742,19 @@ export class Renderer {
   }
 
   // -------------------------------------------------------------- dynamics
+  /** Squash and stretch: a jump pulls the body tall for a moment, a landing
+   *  flattens it (the harder, the more), and both spring back. */
+  #squashStep(p, dt) {
+    const was = this.sqGround ?? p.grounded;
+    if (p.grounded && !was) this.sq = -(0.1 + clamp01((this.sqVy ?? 0) / 640) * 0.24);
+    else if (!p.grounded && was && p.vy < -150) this.sq = 0.18;
+    this.sqGround = p.grounded;
+    this.sqVy = p.vy;
+    this.sq = (this.sq ?? 0) * (1 - Math.min(1, dt * 12));
+  }
+
   updateScarf(p, dt) {
+    this.#squashStep(p, dt);
     const anchorX = p.cx - p.facing * 2;
     const anchorY = p.y + (p.sliding ? 3 : 6);
     if (!this.scarf) {
@@ -646,11 +802,13 @@ export class Renderer {
     const ctx = this.ctx;
 
     ctx.drawImage(this.sky, 0, 0);
+    if (this.aurora) this.#auroraSky();
     this.#parallax(ox, oy);
 
     ctx.drawImage(this.tiles, ox, oy, VIEW_W, VIEW_H, 0, 0, VIEW_W, VIEW_H);
 
     this.#entities(game, ox, oy);
+    this.#ambient(ox, oy);
     this.#particles(fx, ox, oy, false);
     if (p.sinking && !this.hideActors) this.#sinking(p, ox, oy);
     else if (!p.dead && !this.hideActors) {
@@ -682,7 +840,11 @@ export class Renderer {
     out.drawImage(this.frame, sx, sy, sw, sh, 0, 0, VIEW_W, VIEW_H);
   }
 
-  /** One seamless strip of ridgeline per parallax layer, baked once. */
+  /** One seamless strip of ridgeline per parallax layer, baked once. Far
+   *  layers sit in the horizon's haze, near ones are dark; each has a lit
+   *  crest, a shaded side where the ground falls away to the right, and (on a
+   *  theme with trees) pines along the nearer crests. Underground, the far
+   *  layers hang from the top instead: a cave roof full of stalactites. */
   #bakeRidge(l) {
     const c = makeCanvas(l.period, VIEW_H);
     const g = c.getContext('2d');
@@ -697,40 +859,90 @@ export class Renderer {
       const i2 = Math.floor(t2), f2 = t2 - i2;
       const a2 = hash(i2 % (l.nodes * 3), l.seed + 40), b2 = hash((i2 + 1) % (l.nodes * 3), l.seed + 40);
       const sm2 = f2 * f2 * (3 - 2 * f2);
-      const hgt = (a + (b - a) * sm) * l.amp + (a2 + (b2 - a2) * sm2) * l.amp * 0.35;
-      top[x] = Math.round(l.base - hgt);
+      let hgt = (a + (b - a) * sm) * l.amp + (a2 + (b2 - a2) * sm2) * l.amp * 0.35;
+      if (l.hang) {                              // stalactites: sharp, narrow drops
+        const sp = hash(Math.floor(x / 5), l.seed + 9);
+        if (sp > 0.7) hgt += (sp - 0.7) * l.amp * 2.2 * (1 - Math.abs((x % 5) - 2) / 3);
+      }
+      top[x] = Math.round(l.hang ? l.base + hgt : l.base - hgt);
     }
+    const dither = (x, y) => ((x + y) & 1) === 0;
     for (let x = 0; x < l.period; x++) {
       const y = top[x];
+      if (l.hang) {                              // rock from the top down to y
+        g.fillStyle = l.col; g.fillRect(x, 0, 1, y);
+        g.fillStyle = l.rim; g.fillRect(x, y - 1, 1, 1);
+        if (top[(x + 1) % l.period] < y - 1) { g.fillStyle = l.shade; g.fillRect(x, y - 6, 1, 5); }
+        continue;
+      }
       g.fillStyle = l.col;
       g.fillRect(x, y, 1, VIEW_H - y);
-      g.fillStyle = l.rim;                       // moonlit crest
+      // the side turned from the light: where the ground falls to the right
+      const next = top[(x + 1) % l.period], prev = top[(x + l.period - 1) % l.period];
+      // shaded down to a depth that follows the slope over a few columns,
+      // so the dark side reads as a face, not as stripes
+      const ahead = top[(x + 3) % l.period] - top[(x + l.period - 3) % l.period];
+      if (ahead > 0) {
+        const deep = Math.min(30, Math.round(3 + ahead * 2.2));
+        g.fillStyle = l.shade;
+        g.fillRect(x, y + 1, 1, deep - 2);
+        for (let k = deep - 2; k < deep + 2; k++) if (dither(x, y + k)) g.fillRect(x, y + k, 1, 1);
+      }
+      g.fillStyle = l.rim;                       // the lit crest
       g.fillRect(x, y, 1, 1);
-      const rising = x > 0 && top[x - 1] > y;
-      if (rising) { g.fillStyle = l.rim; g.fillRect(x, y + 1, 1, 1); }
+      if (prev > y) g.fillRect(x, y + 1, 1, 1);
       if (l.snow && y < l.base - l.amp * 0.55) { // snow only on the high ground
         g.fillStyle = l.snowCol;
         g.fillRect(x, y, 1, 1 + (hash(x, l.seed) > 0.5 ? 1 : 0));
         if (hash(x, l.seed + 7) > 0.62) g.fillRect(x, y + 2, 1, 1 + Math.floor(hash(x, 3) * 2));
       }
-      if (hash(x, l.seed + 11) > 0.982) {        // scree / crevice
-        g.fillStyle = l.shade;
-        g.fillRect(x, y + 2, 1, 4 + Math.floor(hash(x, 5) * 10));
+    }
+    if (l.trees) {                               // pines along the crest
+      for (let x = 3; x < l.period - 3; x++) {
+        // in clumps: a stand every so often, trees close together within it
+        if (hash(Math.floor(x / 18), l.seed + 49) < 0.45 || hash(x, l.seed + 50) < 0.72) continue;
+        const h = l.treeH[0] + Math.floor(hash(x, l.seed + 51) * l.treeH[1]);
+        const y = Math.min(top[x - 1], top[x], top[x + 1]) + 2;
+        for (let k = 0; k < h; k++) {
+          const w = Math.max(1, Math.round(((k + 1) / h) * (h * 0.42)) | 1);
+          g.fillStyle = l.tree;
+          g.fillRect(x - (w >> 1), y - h + k, w, 1);
+        }
+        g.fillStyle = l.rim; g.fillRect(x, y - h, 1, 1);
+        g.fillStyle = l.tree; g.fillRect(x, y, 1, 2);
       }
     }
     return c;
   }
 
   #bakeRidges() {
+    const under = !!TH.underground;
     const shape = [
-      { f: 0.06, base: 150, amp: 74, period: 720, nodes: 9, seed: 2 },
-      { f: 0.14, base: 182, amp: 58, period: 620, nodes: 11, seed: 5 },
-      { f: 0.28, base: 214, amp: 44, period: 540, nodes: 13, seed: 8 },
-      { f: 0.48, base: 244, amp: 34, period: 460, nodes: 17, seed: 15 },
+      { f: 0.06, base: under ? 34 : 150, amp: under ? 52 : 74, period: 720, nodes: 9, seed: 2, hang: under },
+      { f: 0.14, base: under ? 22 : 182, amp: under ? 64 : 58, period: 620, nodes: 11, seed: 5, hang: under },
+      { f: 0.28, base: 214, amp: 44, period: 540, nodes: 13, seed: 8, treeH: [8, 7] },
+      { f: 0.48, base: 244, amp: 34, period: 460, nodes: 17, seed: 15, treeH: [12, 10] },
     ];
+    // The farthest range is a little lighter than the sky behind it, lit haze,
+    // and each nearer one steps darker, so they stack up as silhouettes
+    // against a dark sky and a bright one alike. (They used to run the other
+    // way, lightest nearest, and melted into the sky.)
+    const skyAt = (y) => {
+      const t = y / VIEW_H;
+      return t < 0.42 ? mix(TH.sky[0], TH.sky[1], t / 0.42)
+           : t < 0.78 ? mix(TH.sky[1], TH.sky[2], (t - 0.42) / 0.36) : mix(TH.sky[2], TH.sky[3], (t - 0.78) / 0.22);
+    };
+    const night = '#06040c';
+    const far = mix(skyAt(shape[0].base - shape[0].amp * 0.5), mix(TH.sky[3], '#ffffff', 0.25), 0.4);
+    const near = mix(TH.ridges[3].shade, night, 0.35);
+    const step = [0, 0.38, 0.66, 0.88];
     this.layers = shape.map((l, i) => {
       const c = TH.ridges[i];
-      return { ...l, col: c.col, rim: c.rim, shade: c.shade, snow: !!c.snow, snowCol: c.snow };
+      const col = l.hang ? mix(c.col, night, 0.6 + i * 0.25) : mix(far, near, step[i]);
+      return {
+        ...l, col, rim: l.hang ? mix(col, c.rim, 0.9) : mix(col, mix(c.rim, '#ffffff', 0.25), 0.55), shade: mix(col, night, 0.3),
+        snow: !!c.snow, snowCol: c.snow, trees: !!TH.trees && !under && i >= 2, tree: mix(col, night, 0.4),
+      };
     });
     this.ridges = this.layers.map((l) => this.#bakeRidge(l));
   }
@@ -745,20 +957,64 @@ export class Renderer {
       let dx = Math.round(-(ox * l.f) % l.period);
       if (dx > 0) dx -= l.period;
       for (let x = dx; x < VIEW_W; x += l.period) ctx.drawImage(img, x, dy);
-      if (dy > 0) { ctx.fillStyle = l.col; ctx.fillRect(0, VIEW_H + dy - 1, VIEW_W, -dy + 1); }
+      if (l.hang) {                               // a cave roof: rock fills in above it
+        if (dy > 0) { ctx.fillStyle = l.col; ctx.fillRect(0, 0, VIEW_W, dy); }
+        continue;
+      }
+      if (dy < 0) { ctx.fillStyle = l.col; ctx.fillRect(0, VIEW_H + dy - 1, VIEW_W, -dy + 1); }
       ctx.fillStyle = this.theme.haze;            // haze stacking up with distance
       const my = Math.round(l.base + dy);
       if (my < VIEW_H) ctx.fillRect(0, my, VIEW_W, VIEW_H - my);
     }
 
+  }
+
+  /** Northern lights: curtains of green and violet swaying high in the sky. */
+  #auroraSky() {
+    const { ctx } = this;
+    const t = this.rt;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let band = 0; band < 2; band++) {
+      for (let x = 0; x < VIEW_W; x += 2) {
+        const y = 30 + band * 26 + Math.sin(x * 0.012 + t * 0.25 + band * 2) * 16 + Math.sin(x * 0.037 - t * 0.4) * 6;
+        const len = 26 + Math.sin(x * 0.05 + t * 0.6 + band) * 12;
+        const a = 0.05 + 0.04 * Math.sin(x * 0.02 + t * 0.9 + band * 3);
+        if (a <= 0) continue;
+        for (let k = 0; k < len; k += 2) {
+          const f = k / len;
+          ctx.fillStyle = band ? `rgba(160,110,255,${(a * (1 - f) * 0.8).toFixed(3)})` : `rgba(90,255,180,${(a * (1 - f)).toFixed(3)})`;
+          ctx.fillRect(x, Math.round(y + k), 2, 2);
+        }
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  /** The air: drifting with the world's clock (so a burst slows it too),
+   *  carried a little by the camera, wrapping round the view. */
+  #ambient(ox, oy) {
+    const { ctx } = this;
+    const A = this.amb, t = this.time, W = VIEW_W + 40, H = VIEW_H + 40;
+    const wrap = (v, m) => ((v % m) + m) % m;
     for (const m of this.motes) {
-      const x = Math.round(m.x - ox * m.p + Math.sin(this.time * 0.6 + m.t) * 6);
-      const y = Math.round(m.y - oy * m.p + Math.cos(this.time * 0.5 + m.t) * 5);
-      if (x < -4 || x > VIEW_W + 4 || y < -4 || y > VIEW_H + 4) continue;
-      const tw = 0.10 + m.p * 0.18 + Math.sin(this.time * 2 + m.t) * 0.06;
-      ctx.fillStyle = `rgba(190,210,255,${Math.max(0, tw).toFixed(3)})`;
+      let x = wrap(m.x + A.drift[0] * m.p * t - ox * m.p * 0.6 + Math.sin(t * 0.7 + m.t) * A.wander, W) - 20;
+      let y = wrap(m.y + A.drift[1] * m.p * t - oy * m.p * 0.6 + Math.cos(t * 0.5 + m.t) * A.wander * 0.6, H) - 20;
+      if (A.low && y < VIEW_H * 0.35) y = VIEW_H * 0.35 + (y + 20) * 0.6;   // fireflies keep near the ground
+      let a = A.faint ? 0.25 + m.p * 0.2 : 0.45 + m.p * 0.35;
+      if (A.blink) a *= 0.35 + 0.65 * Math.max(0, Math.sin(t * 2.3 + m.t * 3));
+      if (a < 0.03) continue;
+      x = Math.round(x); y = Math.round(y);
+      if (A.glow) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = a * 0.8;
+        ctx.drawImage(glowSprite(m.col, 6), x - 6, y - 6);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      ctx.globalAlpha = a;
+      ctx.fillStyle = m.col;
       ctx.fillRect(x, y, m.s, m.s);
     }
+    ctx.globalAlpha = 1;
   }
 
   #entities(game, ox, oy) {
@@ -798,10 +1054,11 @@ export class Renderer {
         ctx.fillRect(x + 1, y - 22 + i, Math.max(2, w), 1);
       }
       if (c.on) {
-        ctx.globalAlpha = 0.25 + Math.sin(t * 3) * 0.1;
-        ctx.fillStyle = C.flagOn;
-        ctx.fillRect(x - 5, y - 26, 14, 16);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.7 + Math.sin(t * 3) * 0.2;
+        ctx.drawImage(glowSprite(C.flagOn, 18), x - 13, y - 36);
         ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
       } else {
         ctx.fillStyle = 'rgba(255,138,176,0.18)';
         ctx.fillRect(x + 1, y - 22 + Math.round(4 + wave), 10, 1);
@@ -816,10 +1073,11 @@ export class Renderer {
         for (let i = 0; i < 6; i++) ctx.fillRect(x - 3 + i, y - 4 + Math.abs(i - 3), 1, 8 - Math.abs(i - 3) * 2);
         continue;
       }
-      ctx.globalAlpha = 0.16 + Math.sin(t * 3 + c.x) * 0.06;
-      ctx.fillStyle = C.crystal;
-      ctx.fillRect(x - 8, y - 9, 16, 18);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.75 + Math.sin(t * 3 + c.x) * 0.25;
+      ctx.drawImage(glowSprite(C.crystal, 16), x - 16, y - 16);
       ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
       ctx.fillStyle = C.crystalDark;
       for (let i = 0; i < 6; i++) ctx.fillRect(x - 5 + i, y - 6 + Math.abs(i - 3) + 1, 1, 12 - Math.abs(i - 3) * 2);
       ctx.fillStyle = C.crystal;
@@ -859,6 +1117,11 @@ export class Renderer {
     if (L.goal) {
       const g = L.goal;
       const x = Math.round(g.x - ox), y = Math.round(g.y - oy);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.8 + Math.sin(t * 2) * 0.15;
+      ctx.drawImage(glowSprite(g.hit ? '#7dffc4' : '#ffd678', 44), x + g.w / 2 - 44, y + g.h / 2 - 44);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
       for (let i = 0; i < g.h; i += 2) {
         const a = 0.22 + 0.26 * Math.sin(t * 4 + i * 0.4);
         ctx.fillStyle = g.hit ? `rgba(125,255,196,${a})` : `rgba(255,214,120,${a})`;
@@ -927,6 +1190,23 @@ export class Renderer {
         const top = L.waterTop(tx, ty);
         ctx.fillStyle = top ? W.body : W.deep;
         ctx.fillRect(x, y + (top ? 2 : 0), TILE, TILE - (top ? 2 : 0));
+        if (top) {                                // lighter just under the skin
+          ctx.globalAlpha = 0.18;
+          ctx.fillStyle = W.surf;
+          ctx.fillRect(x, y + 4, TILE, 2);
+          ctx.globalAlpha = 0.08;
+          ctx.fillRect(x, y + 6, TILE, 4);
+          ctx.globalAlpha = 1;
+        }
+        // light wandering through the body in slow horizontal streaks
+        for (let k = 0; k < 2; k++) {
+          const sy = (tx * 7 + ty * 3 + k * 9 + Math.floor(t * 5)) % TILE;
+          if (top && sy < 6) continue;
+          ctx.globalAlpha = 0.07 + 0.05 * Math.sin(t * 1.7 + tx + k);
+          ctx.fillStyle = W.surf;
+          ctx.fillRect(x + Math.floor(hash(tx, ty * 3 + k) * 9), y + sy, 3 + Math.floor(hash(ty, tx + k) * 5), 1);
+        }
+        ctx.globalAlpha = 1;
         if (!top) continue;
         // the surface: a lit line riding a slow swell, flecks of light on it
         for (let i = 0; i < TILE; i += 2) {
@@ -1054,11 +1334,35 @@ export class Renderer {
       const isFront = p.size > 1;
       if (isFront !== front) continue;
       const a = Math.min(1, p.life / (p.max * 0.6));
+      const x = Math.round(p.x - ox), y = Math.round(p.y - oy);
+      if (p.glow) {                               // sparks light the air round them
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = a * 0.5;
+        ctx.drawImage(glowSprite(p.colour, 5), x - 5, y - 5);
+        ctx.globalCompositeOperation = 'source-over';
+      }
       ctx.globalAlpha = a;
       ctx.fillStyle = p.colour;
-      ctx.fillRect(Math.round(p.x - ox), Math.round(p.y - oy), p.size, p.size);
+      ctx.fillRect(x, y, p.size, p.size);
     }
     ctx.globalAlpha = 1;
+    if (front) {
+      // shockwaves: a ring of pixels swelling out (an ellipse on the ground)
+      ctx.globalCompositeOperation = 'lighter';
+      for (const r of fx.rings) {
+        const k = 1 - r.life / r.max, rad = 2 + (r.r - 2) * (1 - (1 - k) * (1 - k));
+        const ry = r.flat ? rad * 0.3 : rad;
+        ctx.globalAlpha = (1 - k) * 0.85;
+        ctx.fillStyle = r.colour;
+        const n = Math.max(12, Math.round(rad * 4));
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2;
+          ctx.fillRect(Math.round(r.x - ox + Math.cos(a) * rad), Math.round(r.y - oy + Math.sin(a) * ry), 1, 1);
+        }
+      }
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
     for (const l of fx.lines) {
       ctx.globalAlpha = (l.life / l.max) * 0.5;
       ctx.fillStyle = '#dff3ff';
@@ -1091,6 +1395,25 @@ export class Renderer {
       ctx.drawImage(img, Math.round(g.x + (p.w - SPRITE_W) / 2 - ox), Math.round(g.y + g.h - SPRITE_H - oy));
     }
     ctx.globalAlpha = alpha;
+    // a burst gathering: an aura that grows as the top-off creeps in, and
+    // throbs through the wind-up
+    const gather = p.burstWind > 0 ? 0.55 + 0.35 * Math.sin(this.rt * 22)
+                 : p.toppingOff ? ((p.flow - P.BURST_ARM) / (P.FLOW_MAX - P.BURST_ARM)) * 0.45 : 0;
+    if (gather > 0.02) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = alpha * gather;
+      ctx.drawImage(glowSprite('#dff3ff', 18), Math.round(p.cx - 18 - ox), Math.round(p.cy - 18 - oy));
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = alpha;
+    }
+    // lit up while it is pouring on the speed: a dash, a burst
+    if (p.bursting || p.dashing) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = alpha * (p.bursting ? 0.75 + Math.sin(this.rt * 18) * 0.15 : 0.6);
+      ctx.drawImage(glowSprite('#9cf6ff', 22), Math.round(p.cx - 22 - ox), Math.round(p.cy - 22 - oy));
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = alpha;
+    }
 
     this.#drawScarf(p, ox, oy);
 
@@ -1099,7 +1422,16 @@ export class Renderer {
     const img = frames[Math.min(p.anim.frame, frames.length - 1)];
     const px = Math.round(p.x + (p.w - SPRITE_W) / 2 - ox);
     const py = Math.round(p.y + p.h - SPRITE_H - oy);
-    ctx.drawImage(img, px, py);
+    // squash and stretch, about the feet (not while a vault, roll or slide
+    // plays its own frames), and a dash stretches you along it
+    let sx = 1, sy = 1;
+    if (p.dashing) { const d = p.dashDir; sx = 1 + Math.abs(d.x) * 0.22; sy = 1 + Math.abs(d.y) * 0.22 - Math.abs(d.x) * 0.12; }
+    else if (!p.vault && !p.sliding && !(p.rolling > 0) && Math.abs(this.sq ?? 0) > 0.02) { sy = 1 + this.sq; sx = 1 - this.sq * 0.8; }
+    if (sx === 1 && sy === 1) ctx.drawImage(img, px, py);
+    else {
+      const dw = Math.round(SPRITE_W * sx), dh = Math.round(SPRITE_H * sy);
+      ctx.drawImage(img, px + Math.round((SPRITE_W - dw) / 2), py + SPRITE_H - dh, dw, dh);
+    }
 
     if (p.dashes > 0 && !p.dashLocked) {     // dash-ready glint on the belt
       ctx.fillStyle = p.t.dashCool > 0 ? '#5a7fae' : '#9cf6ff';
