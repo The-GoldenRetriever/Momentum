@@ -1516,6 +1516,18 @@ function feetFirst() {
     off.seq.join(' > '));
   check('held down through the roll, it runs on into a slide', order(on.seq, 'dive', 'roll', 'slide'), on.seq.join(' > '));
   check('and the roll costs nothing', off.vRoll >= off.vLand - 1, `${off.vLand.toFixed(0)} -> ${off.vRoll.toFixed(0)} px/s`);
+
+  // down held from the takeoff: no dive while the jump still climbs, and one
+  // the moment it tops out
+  const up = makeSim({ x: 10, y: 19 }, new Level(400, 30).rect(0, 20, 400, 10));
+  up.run(60, ['right']);
+  let risingDive = false, dove = false;
+  up.run(120, (i) => (i < 2 ? ['right', 'jump'] : ['right', 'jump', 'down']), (i, p) => {
+    if (p.diving && p.vy < 0) risingDive = true;
+    if (p.diving) dove = true;
+  });
+  check('no dive while a jump is still gaining height', !risingDive && dove,
+    `dived rising: ${risingDive}, dived at all: ${dove}`);
 }
 
 // 46. the new furniture does what it says. A side pad fires you on past top

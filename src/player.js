@@ -116,8 +116,9 @@ export const P = {
   ROLL_OFF: 0.15,            // off the slope this long and the roll is over
 
   // --- burst: a bar topped right up fires one by itself ------------------
-  BURST_SPEED: 560,          // SPEED x SCALE is what you see on screen
-                             // (~118 px/s real): change one, rebalance both
+  BURST_SPEED: 700,          // SPEED x SCALE is what you see on screen
+                             // (~147 px/s real): change one, rebalance both;
+                             // 560 was asked to go faster
   BURST_DASH: 1000,          // a dash inside a burst: the one thing that outruns
                              // it, or a dash would be a brake mid-burst
   BURST_ARM: 1.45,           // with burst on, the bar from here to the top is the
@@ -126,8 +127,9 @@ export const P = {
   TOPOFF_GAIN: 0.03,         // bar per second through the top-off (~5s of it;
                              // 0.06, then 0.04, were asked to go slower still)
   BURST_SPEED_MIN: 280,      // ... at a real sprint, and only with auto-burst on
-  BURST_DRAIN: 0.8,          // bar per world second: one bar is ~1.25s of burst
-                             // (~6 real seconds at BURST_SCALE), a full tank ~2s
+  BURST_DRAIN: 0.65,         // bar per world second: one bar is ~1.5s of burst
+                             // (~7 real seconds at BURST_SCALE), a full tank ~2.5s;
+                             // 0.8 was asked to last a bit longer
   BURST_SCALE: 0.21,         // the world (and the clock) runs this slowly
   BURST_GRACE: 0.35,         // the wind-up waits this long for a dropped sprint
   BURST_WIND: 1.5,           // real seconds of slow motion, with the bar full,
@@ -1268,14 +1270,17 @@ export class Player {
    *  head first, arms out ahead (falling fast, as down in the air always
    *  does), and low, a slide's height. It lands in a roll that keeps all its
    *  speed, and a roll with down still held runs on into a slide (#slideState
-   *  waits for the roll). A wall, a dash, a spring, a pad or a vault breaks
-   *  it off. */
+   *  waits for the roll). It only starts once you are no longer rising. A
+   *  wall, a dash, a spring, a pad or a vault breaks it off. */
   #dive(iy) {
     if (this.grounded || this.dashing || this.vault || this.wallDir !== 0 || this.sinking || this.bursting) {
       if (!this.grounded) this.diving = false;
       return;
     }
-    if (iy > 0 && Math.abs(this.vx) >= P.SLIDE_ENTER && !this.diving) {
+    // Not on the way up: a dive is a way down, and one started while a jump
+    // still climbs made the jump a low, head-first lunge. Down held through
+    // the rise dives the moment the climb tops out.
+    if (iy > 0 && this.vy >= 0 && Math.abs(this.vx) >= P.SLIDE_ENTER && !this.diving) {
       // a slide in the air is low, as a slide is: a dive goes through a gap
       // in a wall too low to stand in
       this.diving = true;
